@@ -5,6 +5,16 @@
 *.so
 *.dylib
 
+.idea/
+
+# Golang directories
+bin/
+pkg/
+globalState
+src/vclock
+src/golang.org
+
+
 # Test binary, built with `go test -c`
 *.test
 
