@@ -20,12 +20,15 @@ const (
 	OutputDirRel = "../output/"
 )
 
-type Comm struct {
-	Clk          vclock.VClock
-	MyNode       utils.Node
-	NetLayout    utils.NetLayout
-	Listener     net.Listener
-	UnOrderedMsg []*utils.Msg
+type Node struct {
+	Clk          	vclock.VClock
+	MyNodeInfo      utils.Node
+	NetLayout    	utils.NetLayout
+	Listener     	net.Listener
+	NodeState		utils.NodeState
+	ChannelsStates 	map[string]utils.ChState
+	ChGlobState		chan utils.GlobalState
+	ChMark		chan utils.Msg
 
 	// Logs
 	Trace   *log.Logger
@@ -34,26 +37,27 @@ type Comm struct {
 	Error   *log.Logger
 }
 
-func (c *Comm) initLoggers(
+func (n* Node) initLoggers(
 	traceHandle io.Writer, // final output trace
 	infoHandle io.Writer,
 	warningHandle io.Writer,
 	errorHandle io.Writer, addr string) {
 
-	c.Trace = log.New(traceHandle,
+	n.Trace = log.New(traceHandle,
 		"TRACE: \t\t["+addr+"] ", log.Ltime|log.Lshortfile)
 
-	c.Info = log.New(infoHandle,
+	n.Info = log.New(infoHandle,
 		"INFO: \t\t["+addr+"] ", log.Ltime|log.Lshortfile)
 
-	c.Warning = log.New(warningHandle,
+	n.Warning = log.New(warningHandle,
 		"WARNING: \t["+addr+"] ", log.Ltime|log.Lshortfile)
 
-	c.Error = log.New(errorHandle,
+	n.Error = log.New(errorHandle,
 		"ERROR: \t\t["+addr+"] ", log.Ltime|log.Lshortfile)
 }
 
-func NewComm(idxNet int) Comm {
+func InitNode(idxNet int, chGS chan utils.GlobalState) *Node {
+
 	// Read Network Layout
 	var netLayout utils.NetLayout
 	netLayout = utils.ReadConfig(WorkDirPath + "network.json")
@@ -61,18 +65,27 @@ func NewComm(idxNet int) Comm {
 		panic("At least " + strconv.Itoa(idxNet+1) + " processes are needed")
 	}
 
-	// Initialize vClock
-	clk := vclock.New()
-	for _, node := range netLayout.Nodes {
-		clk.Set(node.Name, 0)
-	}
-
 	var myNode = netLayout.Nodes[idxNet]
+
+	// Initialize vClock and create channels state
+	clk := vclock.New()
+	chsState := make(map[string]utils.ChState)
+	for idx, node := range netLayout.Nodes {
+		clk.Set(node.Name, 0)
+		if idx != idxNet {
+			chsState[node.Name] = utils.ChState{
+				RecvMsg:   make([]utils.Msg, 0),
+				Recording: false,
+				Sender: myNode.Name,
+				Recv:	node.Name,
+			}
+		}
+	}
 
 	// Open Listener port
 	listener, err := net.Listen("tcp", ":"+strconv.Itoa(myNode.Port))
 	if err != nil {
-		panic(fmt.Sprintf("ERROR: unable to open port: %s. Error: %s.", strconv.Itoa(netLayout.Nodes[idxNet].Port), err))
+		panic(fmt.Sprintf("ERROR: unable to open port: %s. Error: %s.", strconv.Itoa(myNode.Port), err))
 	}
 
 	// Initialize log
@@ -81,64 +94,176 @@ func NewComm(idxNet int) Comm {
 		log.Fatalln("Failed to open log file:", err)
 	}
 
+
 	// gob.Register(utils.Msg{})
-	var cTemp = Comm{
-		Clk:          clk,
-		MyNode:       myNode,
-		NetLayout:    netLayout,
-		Listener:     listener,
-		UnOrderedMsg: make([]*utils.Msg, 0),
+	var tempNode = Node{
+		Clk:          	clk,
+		MyNodeInfo:     myNode,
+		NetLayout:    	netLayout,
+		Listener:     	listener,
+		NodeState: 		utils.NodeState{SendMsg: make([]utils.Msg, 0), NodeName: myNode.Name},
+		ChannelsStates:	chsState,
+		ChGlobState: 	chGS,
+		ChMark: 		make(chan utils.Msg),
 	}
 
-	cTemp.initLoggers(fLog, fLog, fLog, fLog, myNode.Name)
-	return cTemp
+	tempNode.initLoggers(fLog, fLog, fLog, fLog, myNode.Name)
+	tempNode.Trace.Printf("Listening on port: %s", strconv.Itoa(myNode.Port))
+	go tempNode.waitForSnapshot()
+	go tempNode.waitMsg()
+	return &tempNode
 }
 
-func MakeSnapshot() {
-	fmt.Println("Initializing snapshot...")
+//func NewComm(idxNet int) Comm {
+	//TODO: aqui va lo de InitNode
+//}
+
+func (n* Node) MakeSnapshot() {
+	n.Info.Println("Initializing snapshot...")
+	// Save node state, all prerecording msg (sent btw | prev-state ---- mark | are store on n.NodeState.SendMsg
+	// Todo change it with channel
+	n.NodeState.Busy = true	// While Busy cannot send new msg
+
+	// Send mark
+	mark := utils.NewMark(n.MyNodeInfo.Name, n.Clk)
+	err := n.sendGroup(&mark, nil)
+	if err != nil {
+		n.Error.Panicf("Cannot send initial mark: %s", err)
+	}
+	n.Info.Println("First Mark Sent")
+
+	// Start channels recording
+	for _, c := range n.ChannelsStates {
+		c.Recording = true
+		c.RecvMsg = make([]utils.Msg, 0)
+	}
+}
+
+func (n*  Node) waitForSnapshot(){
+	// Receive all marks
+	var nMarks int8 = 0
+	for {
+		var mark utils.Msg
+		mark = <-n.ChMark
+		nMarks++
+
+		// First mark recv, save process state
+		if !n.NodeState.Busy{
+			n.Info.Printf("[%s] Recv fisrt MARK from %s\n", n.MyNodeInfo.Name, mark.SrcName)
+			n.NodeState.Busy = true // While Busy cannot send new msg
+			// Start channels recording
+			for _, c := range n.ChannelsStates {
+				if c.Sender != mark.SrcName { // Mark channel not record
+					c.Recording = true
+				}
+				c.RecvMsg = make([]utils.Msg, 0)
+			}
+			// Send broadcast marks
+			n.Trace.Printf("[%s] Send broadcast Mark\n", n.MyNodeInfo.Name)
+			err := n.sendGroup(&mark, nil)
+			if err != nil {
+				n.Error.Panicf("Cannot send mark: %s", err)
+			}
+		} else {
+		// NOT First mark recv, stop recording channel
+			n.Trace.Printf("[%s] Recv another MARK from %s\n", n.MyNodeInfo.Name, mark.SrcName)
+			tempChState := n.ChannelsStates[mark.SrcName]
+			tempChState.Recording = false
+			n.ChannelsStates[mark.SrcName] = tempChState
+		}
+
+		if nMarks == int8(len(n.NetLayout.Nodes)-1) {
+			n.Info.Printf("[%s] Recv all MARKs\n", n.MyNodeInfo.Name)
+			break
+		}
+	}
+	// Gather global status and send to app
+	//TODO: complet it
+	// Restore process state
+	//TODO: complet it
 }
 
 // Sends req to the group
-func (c *Comm) SendGroup(req *utils.Msg, resp *utils.Msg) error {
+func (n* Node) sendGroup(req *utils.Msg, resp *utils.Msg) error {
+	if n.NodeState.Busy && req.Body!= utils.BodyMark {
+		return &ErrorGSS{"Cannot send msg while global snapshot process is running"}
+	}
 	// Increment local clk before send event
-	c.Clk.Tick(c.MyNode.Name)
-	msg := utils.NewMsg(c.MyNode.Name, c.Clk.Copy(), req.Body)
+	n.Clk.Tick(n.MyNodeInfo.Name)
+	msg := utils.NewMsg(n.MyNodeInfo.Name, n.Clk.Copy(), req.Body)
 
-	for _, node := range c.NetLayout.Nodes {
-		if node.Name != c.MyNode.Name {
-			go c.sendDirectMsg(msg, &node, c.NetLayout.AttemptsSend)
+	for _, node := range n.NetLayout.Nodes {
+		if node.Name != n.MyNodeInfo.Name {
+			go n.sendDirectMsg(msg, node, n.NetLayout.AttemptsSend)
 		}
 	}
 	return nil
 }
 
-func (c *Comm) sendDirectMsg(msg utils.Msg, node *utils.Node, tries int) {
+func (n* Node) sendDirectMsg(msg utils.Msg, node utils.Node, tries int) {
 	var conn net.Conn
 	var err error
 	var encoder *gob.Encoder
 
-	conn, err = net.Dial("tcp", node.IP+":"+strconv.Itoa(node.Port))
+	netAddr := fmt.Sprint(node.IP+":"+strconv.Itoa(node.Port))
+	conn, err = net.Dial("tcp", netAddr)
 	for i := 0; err != nil && i < tries; i++ {
-		c.Warning.Printf("Client connection error: %s", err)
+		n.Warning.Printf("Client connection error: %s", err)
 		time.Sleep(Period)
-		conn, err = net.Dial("tcp", node.IP+":"+strconv.Itoa(node.Port))
+		conn, err = net.Dial("tcp", netAddr)
 		if i == tries {
-			c.Error.Panicf("Client connection error: %s", err)
+			n.Error.Panicf("Client connection error: %s", err)
 		}
 	}
 
 	encoder = gob.NewEncoder(conn)
-	c.Info.Printf("[%s] Sent to %s: %s CLK: %s\n", msg.SrcName, node.IP, msg.Body, msg.Clock)
+	n.Trace.Printf("[%s] Msg sent to %s: %s CLK: %s\n", msg.SrcName, netAddr, msg.Body, msg.Clock)
 	err = encoder.Encode(msg)
 	if err != nil {
-		c.Error.Panicf("Sending data error: %s", err)
+		n.Error.Panicf("Sending data error: %s", err)
 	}
-	err = conn.Close()
+	err = conn.Close() //TODO: esto está bien así o debería ser un defer?
 	if err != nil {
-		c.Error.Panicf("Clossing connection error: %s", err)
+		n.Error.Panicf("Clossing connection error: %s", err)
 	}
 }
 
+func (n* Node) waitMsg() *utils.Msg {
+	var conn net.Conn
+	var err error
+	var decoder *gob.Decoder
+	var tempMsg = utils.Msg{}
+
+	for {
+		n.Trace.Println("Waiting for connection accept...")
+		if conn, err = n.Listener.Accept(); err != nil {
+			n.Error.Panicf("Server accept connection error: %s", err)
+		}
+		decoder = gob.NewDecoder(conn)
+		if err = decoder.Decode(&tempMsg); err != nil {
+			n.Error.Panicf("Decoding data error: %s", err)
+		}
+
+		// Send data to manage
+		if tempMsg.Body == utils.BodyMark {
+			n.ChMark <- tempMsg
+			n.Info.Printf("[%s] MARK Recv from: %s\n", n.MyNodeInfo.Name, tempMsg.SrcName)
+		} else {
+			n.Info.Printf("[%s] Msg Recv: %s\t From: %s\n", n.MyNodeInfo.Name, tempMsg.Body, tempMsg.SrcName)
+		}
+	}
+}
+
+type ErrorGSS struct {
+	Detail string
+}
+func (e *ErrorGSS) Error() string {
+	return e.Detail
+}
+
+
+
+/*
 func isSequentialCLK(localClk vclock.VClock, recvClk vclock.VClock, senderName string) bool {
 
 	var found = true
@@ -159,42 +284,43 @@ func isSequentialCLK(localClk vclock.VClock, recvClk vclock.VClock, senderName s
 	return found
 }
 
-func (c *Comm) searchNextMsg() (*utils.Msg, bool) {
 
-	for idx, recvMsg := range c.UnOrderedMsg {
-		if isSequentialCLK(c.Clk, recvMsg.Clock, recvMsg.SrcName) {
+func (n* Node) searchNextMsg() (*utils.Msg, bool) {
+
+	for idx, recvMsg := range n.UnOrderedMsg {
+		if isSequentialCLK(n.Clk, recvMsg.Clock, recvMsg.SrcName) {
 			// remove delivered element
-			c.UnOrderedMsg[idx] = c.UnOrderedMsg[len(c.UnOrderedMsg)-1]
-			c.UnOrderedMsg = c.UnOrderedMsg[:len(c.UnOrderedMsg)-1]
+			n.UnOrderedMsg[idx] = n.UnOrderedMsg[len(n.UnOrderedMsg)-1]
+			n.UnOrderedMsg = n.UnOrderedMsg[:len(n.UnOrderedMsg)-1]
 			return recvMsg, true
 		}
 	}
 	return nil, false
 }
 
-func (c *Comm) ReceiveGroup(req *utils.Delays, resp *utils.Msg) error {
-
+func (n* Node) ReceiveGroup(req *utils.Delays, resp *utils.Msg) error {
+	TODO: complete it
 	var tempMsg *utils.Msg
 	var found = false
 	// Wait until found next msg on queue or receive one
 	for !found {
-		if len(c.UnOrderedMsg) > 0 {
-			if tempMsg, found = c.searchNextMsg(); found {
+		if len(n.UnOrderedMsg) > 0 {
+			if tempMsg, found = n.searchNextMsg(); found {
 				break
 			}
 		}
 		// Wait for msg arrive
-		tempMsg = c.waitMsg()
+		tempMsg = n.waitMsg()
 		fmt.Print("Después de waitMSG")
 		fmt.Println(tempMsg.Body)
-		if isSequentialCLK(c.Clk, tempMsg.Clock, tempMsg.SrcName) {
+		if isSequentialCLK(n.Clk, tempMsg.Clock, tempMsg.SrcName) {
 			fmt.Println("sale xk es siguiente")
 			break
 		}
 	}
 
 	// Update local VCLK with arrived msg
-	c.Clk.Merge(tempMsg.Clock)
+	n.Clk.Merge(tempMsg.Clock)
 
 	// Deliver MSG
 	resp = tempMsg
@@ -203,34 +329,4 @@ func (c *Comm) ReceiveGroup(req *utils.Delays, resp *utils.Msg) error {
 
 	return nil
 }
-
-//func (e *ErrorCausal) Error() string {
-//	return fmt.Sprintf(e.What, e.Args)
-//}
-
-func (c *Comm) waitMsg() *utils.Msg {
-	var conn net.Conn
-	var err error
-	var decoder *gob.Decoder
-	var tempMsg = utils.Msg{}
-
-	// c.Listener, err = net.Listen("tcp", strconv.Itoa(c.MyNode.Port))
-	// if err != nil {
-	// 	Error.Panicf("Server listen error: %s", err)
-	// }
-
-	for {
-		c.Trace.Println("Waiting for connection accept...")
-		if conn, err = c.Listener.Accept(); err != nil {
-			c.Error.Panicf("Server accept connection error: %s", err)
-		}
-		decoder = gob.NewDecoder(conn)
-		if err = decoder.Decode(&tempMsg); err != nil {
-			c.Error.Panicf("Decoding data error: %s", err)
-		}
-
-		// Send data to manage
-		c.Info.Println("[%s] Msg Recv: \t From: %s : ", c.MyNode.Name, tempMsg.Body, tempMsg.SrcName)
-		return &tempMsg
-	}
-}
+*/

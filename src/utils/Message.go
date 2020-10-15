@@ -4,6 +4,8 @@ import (
 	"vclock"
 )
 
+const BodyMark = "Mark"
+
 type Delays struct {
 	Delays []int
 }
@@ -16,6 +18,11 @@ type Msg struct {
 	SrcName string
 	Clock   vclock.VClock
 	Body    interface{}
+}
+
+
+func NewMark(srcName string, clock vclock.VClock) Msg {
+	return Msg{SrcName: srcName, Clock: clock, Body: BodyMark}
 }
 
 func NewMsg(srcName string, clock vclock.VClock, body interface{}) Msg {

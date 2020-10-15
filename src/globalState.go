@@ -5,6 +5,8 @@ import (
 	"os"
 	"strconv"
 	"globalSnapshot"
+	"time"
+	"utils"
 )
 
 func main() {
@@ -18,10 +20,25 @@ func main() {
 		panic(fmt.Sprintf("Bad argument[0]: %s. Error: %s. Usage: go run grpCausal.go <0-based index node> <RPC port>", args[0], err))
 	}
 	fmt.Println("Starting process ", idx)
+	chGS := make(chan utils.GlobalState)
+	node := globalSnapshot.InitNode(idx, chGS)
 	if idx == 0 {
-		globalSnapshot.MakeSnapshot()
+		node.MakeSnapshot()
+	}
+
+	// TODO: delete timeout to finish
+	boom := time.After(10000 * time.Millisecond)
+	var gs utils.GlobalState
+	select {
+		case gs = <- chGS:
+			fmt.Println(gs)
+			return
+		case <- boom:
+			fmt.Println("BOOM!")
+			return
 	}
 	// c := causalGCom.NewComm(idx)
+	//TODO: chang it for working with RPC
 
 	// // Register c as RPC and serve
 	// err = rpc.Register(&c)
