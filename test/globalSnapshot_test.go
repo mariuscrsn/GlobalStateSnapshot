@@ -1,20 +1,15 @@
-package globalSnapshot
+package main
 
 import (
 	"fmt"
-	"globalSnapshot/utils"
 	"net/rpc"
 	"os"
 	"strconv"
 	"testing"
 	"time"
+	"utils"
 
 	"golang.org/x/crypto/ssh"
-)
-
-const (
-	// WorkDirPath = "/home/a721609/redes/pr1/"
-	WorkDirPath = "/home/cms/Escritorio/uni/redes/practicas/pr1/src/"
 )
 
 var RPCConn map[string]*rpc.Client

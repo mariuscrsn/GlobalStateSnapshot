@@ -20,6 +20,10 @@ type Msg struct {
 	Body    interface{}
 }
 
+type OutMsg struct {
+	Msg 	Msg
+	IdxDest 	int
+}
 
 func NewMark(srcName string, clock vclock.VClock) Msg {
 	return Msg{SrcName: srcName, Clock: clock, Body: BodyMark}

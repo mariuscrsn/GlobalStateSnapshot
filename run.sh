@@ -7,11 +7,15 @@ if [ ! -d $LOG_DIR ]; then
 fi
 
 # Kill orphans proc
-netstat -tlpn 2>/dev/null | grep globalState | tr -s ' '| cut -d'/' -f1 | cut -d' ' -f7 | xargs -i kill {}
-cd src || exit
-go build globalState.go
+netstat -tlpn 2>/dev/null | grep app | tr -s ' '| cut -d'/' -f1 | cut -d' ' -f7 | xargs -i kill {}
+rm output/*
+cd test || exit
+go build app.go
 for i in {0..3} ; do
-    ./globalState "$i" &
+    ./app "$i" &
     sleep 0.05
 done
+
+sleep 10
+cd .. && sort -k 3  output/*  > output/completeLog.log
 

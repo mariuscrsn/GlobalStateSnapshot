@@ -10,5 +10,5 @@ type Node struct {
 
 type NetLayout struct {
 	Nodes        []Node `json:"Nodes"`
-	AttemptsSend int    // TODO: remove if not used
+	AttemptsSend int
 }

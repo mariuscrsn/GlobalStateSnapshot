@@ -7,13 +7,18 @@ type NodeState struct {
 }
 
 type ChState struct {
-	RecvMsg []Msg
-	Recording bool
-	Sender	string
-	Recv	string
+	RecvMsg 	[]Msg
+	Recording 	bool
+	Sender		string
+	Recv		string
+}
+
+type AllState struct {
+	Node 			NodeState
+	Channels 		map[string]ChState
+	RecvAllMarks 	bool
 }
 
 type GlobalState struct {
-	Nodes []NodeState
-	Channels []ChState
+	GS 		[]AllState
 }

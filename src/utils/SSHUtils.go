@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	SSH_Port       = "22"
+	SshPort        = "22"
 	PrivateKeyPath = "/home/cms/.ssh/id_rsa" // TODO: load like hostkey
 )
 
@@ -47,7 +47,7 @@ func ConnectSSH(user string, host string) *ssh.Client {
 	}
 
 	// Connect via ssh
-	client, err := ssh.Dial("tcp", host+":"+SSH_Port, config)
+	client, err := ssh.Dial("tcp", host+":"+SshPort, config)
 	if err != nil {
 		panic(err)
 	}

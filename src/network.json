@@ -1,6 +1,13 @@
 {
   "Nodes": [
     {
+      "Name" : "P0",
+      "User" : "cms",
+      "IP" : "127.0.0.1",
+      "Port" : 16090,
+      "RPCPort" : 26090
+    },
+    {
       "Name" : "P1",
       "User" : "cms",
       "IP" : "127.0.0.1",
@@ -20,13 +27,6 @@
       "IP" : "127.0.0.1",
       "Port" : 16093,
       "RPCPort" : 26093
-    },
-    {
-      "Name" : "P4",
-      "User" : "cms",
-      "IP" : "127.0.0.1",
-      "Port" : 16094,
-      "RPCPort" : 26094
     }
   ],
   "attemptsSend": 5
