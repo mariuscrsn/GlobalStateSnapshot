@@ -3,6 +3,7 @@ package utils
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/DistributedClocks/GoVector/govec"
 	"io/ioutil"
 	"log"
 	"net/rpc"
@@ -18,12 +19,13 @@ type Logger struct {
 	Info    *log.Logger
 	Warning *log.Logger
 	Error   *log.Logger
+	GoVector *govec.GoLog
 }
 
 func InitLoggers(name string) *Logger{
 
 	// Initialize log
-	fLog, err := os.OpenFile(OutputDirRel+"Log_P"+ name+".log", os.O_CREATE|os.O_WRONLY, 0666)
+	fLog, err := os.OpenFile(OutputDirRel+"Log_P"+ name + ".log", os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
 		log.Fatalln("Failed to open log file:", err)
 	}
@@ -40,6 +42,9 @@ func InitLoggers(name string) *Logger{
 
 	myLogger.Error = log.New(fLog,
 		"ERROR: \t\t[P"+ name +"] ", log.Ltime| log.Lmicroseconds | log.Lshortfile)
+
+	//Initialize GoVector logger
+	myLogger.GoVector = govec.InitGoVector("P"+name, OutputDirRel+"GoVector/LogFileP" + name, govec.GetDefaultConfig())
 
 	return &myLogger
 }
@@ -68,13 +73,6 @@ func SendGroup(conn *rpc.Client, content interface{}) {
 	req := Msg{Body: content}
 	resp := Msg{}
 	err := conn.Call("Comm.SendGroup", &req, &resp)
-	if err != nil {
-		panic(err)
-	}
-}
-
-func ReceiveGroup(conn *rpc.Client, delays *Delays, resp Msg) {
-	err := conn.Call("Comm.ReceiveGroup", &delays, &resp)
 	if err != nil {
 		panic(err)
 	}

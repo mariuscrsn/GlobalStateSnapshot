@@ -29,5 +29,5 @@
       "RPCPort" : 26093
     }
   ],
-  "attemptsSend": 5
+  "attemptsSend": 10
 }

@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"globalSnapshot"
+	"snapshot"
 	"node"
 	"os"
 	"strconv"
@@ -11,7 +11,7 @@ import (
 )
 
 type App struct {
-	snap 	*globalSnapshot.SnapNode
+	snap 	*snapshot.SnapNode
 	node 	*node.Node
 	log 	*utils.Logger
 	chAppMsg chan utils.OutMsg
@@ -20,14 +20,14 @@ type App struct {
 func NewApp(idxNet int) *App {
 	var app App
 	app.chAppMsg = make(chan utils.OutMsg)		// node <--   msg  --> snap
-	chRecvMark := make(chan utils.Msg)			// node <-- mark|msg --> snap
-	chStateSnap := make(chan utils.AllState) 	// node <-- AllState --> snap
-	chAppGS := make(chan utils.GlobalState) 	// app 	<-- GState   --> snap
+	chRecvMark := make(chan utils.Msg)			// node --- mark|msg --> snap
+	chCurrentState := make(chan utils.AllState) // node <-- AllState --- snap
+	chRecvState := make(chan utils.AllState) 	// node --- AllState --> snap
 	chSendMark := make(chan utils.Msg)			// node <-- SendMark --> snap
 
 	app.log = utils.InitLoggers(strconv.Itoa(idxNet))
-	app.node = node.NewNode(idxNet, app.chAppMsg, chRecvMark, chSendMark, chStateSnap, app.log)
-	app.snap = globalSnapshot.NewSnapNode(idxNet, chRecvMark, chSendMark, chStateSnap, chAppGS, &app.node.NetLayout, app.log)
+	app.node = node.NewNode(idxNet, app.chAppMsg, chRecvMark, chSendMark, chCurrentState, chRecvState, app.log)
+	app.snap = snapshot.NewSnapNode(idxNet, chRecvMark, chSendMark, chCurrentState, chRecvState, &app.node.NetLayout, app.log)
 	return &app
 }
 
@@ -50,9 +50,10 @@ func main() {
 	app := NewApp(idx)
 	if idx == 0 {
 		app.MakeSnapshot()
+
 	}
 
-	time.Sleep(10 * time.Second)
+	time.Sleep(20 * time.Second)
 	fmt.Println("FINISH!")
 	return
 	//TODO: chang it for working with RPC
