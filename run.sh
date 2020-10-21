@@ -8,7 +8,7 @@ if [ ! -d $LOG_DIR ]; then
 fi
 
 # Kill orphans proc
-netstat -tlpn 2>/dev/null | grep app | tr -s ' '| cut -d'/' -f1 | cut -d' ' -f7 | xargs -i kill {}
+netstat -tlpn 2>/dev/null | grep App | tr -s ' '| cut -d'/' -f1 | cut -d' ' -f7 | xargs -i kill {}
 
 cd test || exit
 go build app.go

@@ -1,8 +1,7 @@
 package snapshot
 
 import (
-	"github.com/DistributedClocks/GoVector/govec"
-	"utils"
+	"globalSnapshot/src/utils"
 )
 
 type SnapNode struct {
@@ -103,7 +102,7 @@ func (n*  SnapNode) waitForSnapshot(){
 		if nMarks == int8(len(n.Nodes)) {
 			// Send current state to all
 			n.Logger.Info.Printf("Recv all MARKs\n")
-			n.Logger.GoVector.LogLocalEvent("Recv all MARKs", govec.GetDefaultLogOptions())
+			//n.Logger.GoVector.LogLocalEvent("Recv all MARKs", govec.GetDefaultLogOptions())
 			n.ChCurrentState <- utils.AllState{
 				Node:         n.NodeState,
 				Channels:     n.ChannelsStates,

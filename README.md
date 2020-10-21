@@ -4,7 +4,6 @@ Chandy-Lamport algorithm for snapshotting the global state of a distributed syst
 ## TODO
 
 - [ ] Añadir RPC
-- [X] Añadir GoVector
 - [ ] Test en local y verificar funcionamiento
 - [ ] Pruebas en distribuidos
 - [ ] Memoria

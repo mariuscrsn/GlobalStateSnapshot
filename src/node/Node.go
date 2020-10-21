@@ -2,11 +2,11 @@ package node
 
 import (
 	"fmt"
-	govec "github.com/DistributedClocks/GoVector/govec"
+	"globalSnapshot/src/utils"
+	//"globalSnapshot/src/github.com/DistributedClocks/GoVector/govec"
 	"net"
 	"strconv"
 	"time"
-	"utils"
 )
 
 const (
@@ -22,7 +22,8 @@ type Node struct {
 	ChRecvState		chan utils.AllState
 	ChRecvMark		chan utils.Msg
 	ChSendMark		chan utils.Msg
-	ChAppMsg		chan utils.OutMsg
+	ChSendAppMsg	chan utils.OutMsg
+	ChRecvAppMsg	chan utils.Msg
 	Logger 			*utils.Logger
 }
 
@@ -34,7 +35,7 @@ func (e *ErrorNode) Error() string {
 	return e.Detail
 }
 
-func NewNode(idxNet int, chAppMsg chan utils.OutMsg, chRecvMark chan utils.Msg, chSendMark chan utils.Msg, chCurrentState chan utils.AllState, chRecvState chan utils.AllState, logger *utils.Logger) *Node {
+func NewNode(idxNet int, chRecvAppMsg chan utils.Msg, chSendAppMsg chan utils.OutMsg, chRecvMark chan utils.Msg, chSendMark chan utils.Msg, chCurrentState chan utils.AllState, chRecvState chan utils.AllState, logger *utils.Logger) *Node {
 
 	// Read Network Layout
 	var netLayout utils.NetLayout
@@ -71,7 +72,8 @@ func NewNode(idxNet int, chAppMsg chan utils.OutMsg, chRecvMark chan utils.Msg, 
 		AllState: 		utils.AllState{},
 		ChCurrentState: chCurrentState,
 		ChRecvState: 	chRecvState,
-		ChAppMsg: 		chAppMsg,
+		ChSendAppMsg: 	chSendAppMsg,
+		ChRecvAppMsg: 	chRecvAppMsg,
 		ChRecvMark: 	chRecvMark,
 		ChSendMark: 	chSendMark,
 		Logger: 		logger,
@@ -94,26 +96,31 @@ func (n* Node) receiver() *utils.Msg {
 			n.Logger.Error.Panicf("Server accept connection error: %s", err)
 		}
 		nBytes, err := conn.Read(recvData[0:])
+		fmt.Println(nBytes)
 		if err != nil {
+			fmt.Printf("%v\n%s\n", conn, conn)
 			n.Logger.Error.Panicf("Server accept connection error: %s", err)
 		}
 		
 		if n.AllState.RecvAllMarks { // Waiting for states of the rest of the nodes
 			var tempState = utils.AllState{}
-
-			n.Logger.GoVector.UnpackReceive("Receiving State", recvData[0:nBytes], &tempState, govec.GetDefaultLogOptions())
+			//n.Logger.GoVector.UnpackReceive("Receiving State", recvData[0:nBytes], &tempState, govec.GetDefaultLogOptions())
 			// Send state to snapshot
 			n.Logger.Info.Printf("Recv State from: %s\n", tempState.Node.NodeName)
 			n.ChRecvState <- tempState
-		} else { // Waiting for MSG or marks
-			var tempMsg utils.Msg
-			n.Logger.GoVector.UnpackReceive("Receiving Message", recvData[0:nBytes], &tempMsg, govec.GetDefaultLogOptions())
+		} else
+		{ // Waiting for MSG or marks
+			var tempMsg utils.Msg = utils.Msg{
+				SrcName: "P*",
+				Body:    utils.BodyMark,
+			}
+			//n.Logger.GoVector.UnpackReceive("Receiving Message", recvData[0:nBytes], &tempMsg, govec.GetDefaultLogOptions())
 			// Send data to snapshot
 			if tempMsg.Body == utils.BodyMark {
 				n.Logger.Info.Printf("MARK Recv from: %s\n", tempMsg.SrcName)
 				n.ChRecvMark <- tempMsg
 			} else {
-				n.ChAppMsg <- utils.OutMsg{Msg: tempMsg, IdxDest: []int{0}}
+				n.ChRecvAppMsg <- tempMsg
 				n.Logger.Info.Printf("Msg Recv: %s\t From: %s\n", tempMsg.Body, tempMsg.SrcName)
 				if n.AllState.Node.Busy {
 					n.ChRecvMark <- tempMsg // Send msg to snapshot for channel recording
@@ -125,29 +132,32 @@ func (n* Node) receiver() *utils.Msg {
 
 func (n *Node) sender(){
 	var chAux chan utils.OutMsg
-	opts := govec.GetDefaultLogOptions()
+	//opts := govec.GetDefaultLogOptions()
+	var outBuf []byte
+	outBuf = []byte{'A','B'}
 	for {
 		select {
-		case detMsg := <-n.ChAppMsg:
+		case detMsg := <-n.ChSendAppMsg:
 			if !n.AllState.Node.Busy { // it is not performing a global snapshot
 				msg := detMsg.Msg
 				msg.SrcName = n.MyNodeInfo.Name
-				outBuf := n.Logger.GoVector.PrepareSend("Sending msg", msg, opts)
+
+				//outBuf := n.Logger.GoVector.PrepareSend("Sending msg", msg, opts)
 				if err := n.sendGroup(outBuf, &detMsg); err != nil {
 					n.Logger.Error.Panicf("Cannot send app msg: %s", err)
 				}
 			}
 		case <-n.ChSendMark:
 			// Block app msg if not blocked yet
-			if n.ChAppMsg != nil {
-				chAux = n.ChAppMsg
-				n.ChAppMsg = nil
+			if n.ChSendMark != nil {
+				chAux = n.ChSendAppMsg
+				n.ChSendMark = nil
 			}
 			// Send mark
-			outBuf := n.Logger.GoVector.PrepareSend("Sending mark", utils.Msg{
-				SrcName: n.MyNodeInfo.Name,
-				Body:    utils.BodyMark,
-			}, opts)
+			//outBuf := n.Logger.GoVector.PrepareSend("Sending mark", utils.Msg{
+			//	SrcName: n.MyNodeInfo.Name,
+			//	Body:    utils.BodyMark,
+			//}, opts)
 			err := n.sendGroup(outBuf, nil)
 			if err != nil {
 				n.Logger.Error.Panicf("Cannot send initial mark: %s", err)
@@ -155,12 +165,12 @@ func (n *Node) sender(){
 		case state := <-n.ChCurrentState:
 			n.AllState = state
 			if !n.AllState.Node.Busy { // Restart app msg sending
-				n.ChAppMsg = chAux
+				n.ChSendAppMsg = chAux
 			}
 			n.Logger.Info.Println("Node state updated")
 			if n.AllState.RecvAllMarks {
 				n.Logger.Info.Println("Sending my state to all")
-				outBuf := n.Logger.GoVector.PrepareSend("Sending my state to all", n.AllState, opts)
+				//outBuf := n.Logger.GoVector.PrepareSend("Sending my state to all", n.AllState, opts)
 				if err := n.sendGroup(outBuf, nil); err != nil {
 					n.Logger.Error.Panicf("Cannot send app msg: %s", err)
 				}
@@ -195,7 +205,6 @@ func (n* Node) sendGroup(data []byte, outMsg *utils.OutMsg) error {
 func (n* Node) sendDirectMsg(msg []byte, node utils.Node, delay int) {
 	var conn net.Conn
 	var err error
-	//var encoder *gob.Encoder
 
 	netAddr := fmt.Sprint(node.IP+":"+strconv.Itoa(node.Port))
 	conn, err = net.Dial("tcp", netAddr)
@@ -217,72 +226,3 @@ func (n* Node) sendDirectMsg(msg []byte, node utils.Node, delay int) {
 		n.Logger.Error.Panicf("Clossing connection error: %v", err)
 	}
 }
-
-
-/*
-func isSequentialCLK(localClk vclock.VClock, recvClk vclock.VClock, senderName string) bool {
-
-	var found = true
-	var localIndClk, recvIndClk uint64
-	localIndClk, ok := localClk.FindTicks(senderName)
-	found = found && ok
-	recvIndClk, ok = recvClk.FindTicks(senderName)
-	found = found && ok
-	// Only changes remote sender clk
-	if found && (localIndClk+1 == recvIndClk) { // sender clk event increment
-		for nodeName, localIndClk := range localClk.GetMap() {
-			recvIndClk, ok = recvClk.FindTicks(nodeName)
-			found = found && ok && (localIndClk == recvIndClk) // is sequential if the rest of clk_i are equal
-		}
-	} else {
-		found = false
-	}
-	return found
-}
-
-
-func (n* Node) searchNextMsg() (*utils.Msg, bool) {
-
-	for idx, recvMsg := range n.UnOrderedMsg {
-		if isSequentialCLK(n.Clk, recvMsg.Clock, recvMsg.SrcName) {
-			// remove delivered element
-			n.UnOrderedMsg[idx] = n.UnOrderedMsg[len(n.UnOrderedMsg)-1]
-			n.UnOrderedMsg = n.UnOrderedMsg[:len(n.UnOrderedMsg)-1]
-			return recvMsg, true
-		}
-	}
-	return nil, false
-}
-
-func (n* Node) ReceiveGroup(req *utils.Delays, resp *utils.Msg) error {
-	to do complete it
-	var tempMsg *utils.Msg
-	var found = false
-	// Wait until found next msg on queue or receive one
-	for !found {
-		if len(n.UnOrderedMsg) > 0 {
-			if tempMsg, found = n.searchNextMsg(); found {
-				break
-			}
-		}
-		// Wait for msg arrive
-		tempMsg = n.waitMsg()
-		fmt.Print("Después de waitMSG")
-		fmt.Println(tempMsg.Body)
-		if isSequentialCLK(n.Clk, tempMsg.Clock, tempMsg.SrcName) {
-			fmt.Println("sale xk es siguiente")
-			break
-		}
-	}
-
-	// Update local VCLK with arrived msg
-	n.Clk.Merge(tempMsg.Clock)
-
-	// Deliver MSG
-	resp = tempMsg
-	fmt.Println(tempMsg.Body)
-	fmt.Println(resp.Body)
-
-	return nil
-}
-*/

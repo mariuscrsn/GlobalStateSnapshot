@@ -10,8 +10,8 @@ import (
 	"os"
 )
 
-const OutputDirRel= "../output/"
-const WorkDirPath  = "/home/cms/Escritorio/uni/redes/practicas/pr1/src/"
+const OutputDirRel= "output/"
+const WorkDirPath  = "/home/cms/Escritorio/uni/redes/practicas/pr1/"
 
 type Logger struct {
 	// Logs
@@ -69,10 +69,11 @@ func ReadConfig() NetLayout {
 	return netCfg
 }
 
-func SendGroup(conn *rpc.Client, content interface{}) {
-	req := Msg{Body: content}
-	resp := Msg{}
-	err := conn.Call("Comm.SendGroup", &req, &resp)
+func RunRPCCommand(method string, conn *rpc.Client, content interface{}) {
+	var req interface{} = Msg{Body: content}
+	//resp := Msg{}
+	err := conn.Call(method, &req, nil)
+	fmt.Println(" peticion RPC")
 	if err != nil {
 		panic(err)
 	}

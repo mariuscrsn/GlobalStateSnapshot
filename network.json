@@ -20,13 +20,6 @@
       "IP" : "127.0.0.1",
       "PORT" : 16092,
       "RPCPort" : 26092
-    },
-    {
-      "Name" : "P3",
-      "User" : "cms",
-      "IP" : "127.0.0.1",
-      "Port" : 16093,
-      "RPCPort" : 26093
     }
   ],
   "attemptsSend": 10
