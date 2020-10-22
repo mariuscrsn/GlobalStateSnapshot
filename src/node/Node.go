@@ -2,29 +2,29 @@ package node
 
 import (
 	"fmt"
+	"github.com/DistributedClocks/GoVector/govec"
 	"globalSnapshot/src/utils"
-	//"globalSnapshot/src/github.com/DistributedClocks/GoVector/govec"
 	"net"
 	"strconv"
 	"time"
 )
 
 const (
-	Period       = 2000 * time.Millisecond
+	Period = 2000 * time.Millisecond
 )
 
 type Node struct {
-	MyNodeInfo      utils.Node
-	NetLayout    	utils.NetLayout
-	AllState 		utils.AllState
-	Listener     	net.Listener
-	ChCurrentState	chan utils.AllState
-	ChRecvState		chan utils.AllState
-	ChRecvMark		chan utils.Msg
-	ChSendMark		chan utils.Msg
-	ChSendAppMsg	chan utils.OutMsg
-	ChRecvAppMsg	chan utils.Msg
-	Logger 			*utils.Logger
+	MyNodeInfo     utils.Node
+	NetLayout      utils.NetLayout
+	AllState       utils.AllState
+	Listener       net.Listener
+	ChCurrentState chan utils.AllState
+	ChRecvState    chan utils.AllState
+	ChRecvMark     chan utils.Msg
+	ChSendMark     chan utils.Msg
+	ChSendAppMsg   chan utils.OutMsg
+	ChRecvAppMsg   chan utils.Msg
+	Logger         *utils.Logger
 }
 
 type ErrorNode struct {
@@ -53,8 +53,8 @@ func NewNode(idxNet int, chRecvAppMsg chan utils.Msg, chSendAppMsg chan utils.Ou
 			chsState[node.Name] = utils.ChState{
 				RecvMsg:   make([]utils.Msg, 0),
 				Recording: false,
-				Sender: myNode.Name,
-				Recv:	node.Name,
+				Sender:    myNode.Name,
+				Recv:      node.Name,
 			}
 		}
 	}
@@ -67,16 +67,16 @@ func NewNode(idxNet int, chRecvAppMsg chan utils.Msg, chSendAppMsg chan utils.Ou
 
 	var tempNode = Node{
 		MyNodeInfo:     myNode,
-		NetLayout:    	netLayout,
-		Listener:     	listener,
-		AllState: 		utils.AllState{},
+		NetLayout:      netLayout,
+		Listener:       listener,
+		AllState:       utils.AllState{},
 		ChCurrentState: chCurrentState,
-		ChRecvState: 	chRecvState,
-		ChSendAppMsg: 	chSendAppMsg,
-		ChRecvAppMsg: 	chRecvAppMsg,
-		ChRecvMark: 	chRecvMark,
-		ChSendMark: 	chSendMark,
-		Logger: 		logger,
+		ChRecvState:    chRecvState,
+		ChSendAppMsg:   chSendAppMsg,
+		ChRecvAppMsg:   chRecvAppMsg,
+		ChRecvMark:     chRecvMark,
+		ChSendMark:     chSendMark,
+		Logger:         logger,
 	}
 
 	tempNode.Logger.Trace.Printf("Listening on port: %s", strconv.Itoa(myNode.Port))
@@ -85,36 +85,30 @@ func NewNode(idxNet int, chRecvAppMsg chan utils.Msg, chSendAppMsg chan utils.Ou
 	return &tempNode
 }
 
-func (n* Node) receiver() *utils.Msg {
+func (n *Node) receiver() *utils.Msg {
 	var conn net.Conn
 	var err error
 	var recvData [1024]byte
-	
+
 	for {
 		n.Logger.Trace.Println("Waiting for connection accept...")
 		if conn, err = n.Listener.Accept(); err != nil {
 			n.Logger.Error.Panicf("Server accept connection error: %s", err)
 		}
 		nBytes, err := conn.Read(recvData[0:])
-		fmt.Println(nBytes)
 		if err != nil {
-			fmt.Printf("%v\n%s\n", conn, conn)
 			n.Logger.Error.Panicf("Server accept connection error: %s", err)
 		}
-		
+
 		if n.AllState.RecvAllMarks { // Waiting for states of the rest of the nodes
 			var tempState = utils.AllState{}
-			//n.Logger.GoVector.UnpackReceive("Receiving State", recvData[0:nBytes], &tempState, govec.GetDefaultLogOptions())
+			n.Logger.GoVector.UnpackReceive("Receiving State", recvData[0:nBytes], &tempState, govec.GetDefaultLogOptions())
 			// Send state to snapshot
 			n.Logger.Info.Printf("Recv State from: %s\n", tempState.Node.NodeName)
 			n.ChRecvState <- tempState
-		} else
-		{ // Waiting for MSG or marks
-			var tempMsg utils.Msg = utils.Msg{
-				SrcName: "P*",
-				Body:    utils.BodyMark,
-			}
-			//n.Logger.GoVector.UnpackReceive("Receiving Message", recvData[0:nBytes], &tempMsg, govec.GetDefaultLogOptions())
+		} else { // Waiting for MSG or marks
+			var tempMsg utils.Msg
+			n.Logger.GoVector.UnpackReceive("Receiving Message", recvData[0:nBytes], &tempMsg, govec.GetDefaultLogOptions())
 			// Send data to snapshot
 			if tempMsg.Body == utils.BodyMark {
 				n.Logger.Info.Printf("MARK Recv from: %s\n", tempMsg.SrcName)
@@ -130,19 +124,18 @@ func (n* Node) receiver() *utils.Msg {
 	}
 }
 
-func (n *Node) sender(){
+func (n *Node) sender() {
 	var chAux chan utils.OutMsg
-	//opts := govec.GetDefaultLogOptions()
+	opts := govec.GetDefaultLogOptions()
 	var outBuf []byte
-	outBuf = []byte{'A','B'}
+	outBuf = []byte{'A', 'B'}
 	for {
 		select {
 		case detMsg := <-n.ChSendAppMsg:
 			if !n.AllState.Node.Busy { // it is not performing a global snapshot
 				msg := detMsg.Msg
 				msg.SrcName = n.MyNodeInfo.Name
-
-				//outBuf := n.Logger.GoVector.PrepareSend("Sending msg", msg, opts)
+				outBuf = n.Logger.GoVector.PrepareSend("Sending msg", msg, opts)
 				if err := n.sendGroup(outBuf, &detMsg); err != nil {
 					n.Logger.Error.Panicf("Cannot send app msg: %s", err)
 				}
@@ -154,10 +147,10 @@ func (n *Node) sender(){
 				n.ChSendMark = nil
 			}
 			// Send mark
-			//outBuf := n.Logger.GoVector.PrepareSend("Sending mark", utils.Msg{
-			//	SrcName: n.MyNodeInfo.Name,
-			//	Body:    utils.BodyMark,
-			//}, opts)
+			outBuf := n.Logger.GoVector.PrepareSend("Sending mark", utils.Msg{
+				SrcName: n.MyNodeInfo.Name,
+				Body:    utils.BodyMark,
+			}, opts)
 			err := n.sendGroup(outBuf, nil)
 			if err != nil {
 				n.Logger.Error.Panicf("Cannot send initial mark: %s", err)
@@ -170,7 +163,7 @@ func (n *Node) sender(){
 			n.Logger.Info.Println("Node state updated")
 			if n.AllState.RecvAllMarks {
 				n.Logger.Info.Println("Sending my state to all")
-				//outBuf := n.Logger.GoVector.PrepareSend("Sending my state to all", n.AllState, opts)
+				outBuf := n.Logger.GoVector.PrepareSend("Sending my state to all", n.AllState, opts)
 				if err := n.sendGroup(outBuf, nil); err != nil {
 					n.Logger.Error.Panicf("Cannot send app msg: %s", err)
 				}
@@ -180,7 +173,7 @@ func (n *Node) sender(){
 }
 
 // Sends req to the group
-func (n* Node) sendGroup(data []byte, outMsg *utils.OutMsg) error {
+func (n *Node) sendGroup(data []byte, outMsg *utils.OutMsg) error {
 	if outMsg == nil { // sending state
 		for _, node := range n.NetLayout.Nodes {
 			if node.Name != n.MyNodeInfo.Name {
@@ -188,7 +181,7 @@ func (n* Node) sendGroup(data []byte, outMsg *utils.OutMsg) error {
 			}
 		}
 	} else { // sending msg
-		if n.AllState.Node.Busy && outMsg.Msg.Body!= utils.BodyMark {
+		if n.AllState.Node.Busy && outMsg.Msg.Body != utils.BodyMark {
 			return &ErrorNode{"Cannot send msg while global snapshot process is running"}
 		}
 
@@ -202,11 +195,11 @@ func (n* Node) sendGroup(data []byte, outMsg *utils.OutMsg) error {
 	return nil
 }
 
-func (n* Node) sendDirectMsg(msg []byte, node utils.Node, delay int) {
+func (n *Node) sendDirectMsg(msg []byte, node utils.Node, delay int) {
 	var conn net.Conn
 	var err error
 
-	netAddr := fmt.Sprint(node.IP+":"+strconv.Itoa(node.Port))
+	netAddr := fmt.Sprint(node.IP + ":" + strconv.Itoa(node.Port))
 	conn, err = net.Dial("tcp", netAddr)
 	for i := 0; err != nil && i < n.NetLayout.AttemptsSend; i++ {
 		n.Logger.Warning.Printf("Client connection error: %s", err)
@@ -218,7 +211,7 @@ func (n* Node) sendDirectMsg(msg []byte, node utils.Node, delay int) {
 	}
 	time.Sleep(time.Duration(delay) * time.Millisecond)
 	_, err = conn.Write(msg)
-	if err != nil{
+	if err != nil {
 		n.Logger.Error.Panicf("Sending data error: %v", err)
 	}
 	err = conn.Close()

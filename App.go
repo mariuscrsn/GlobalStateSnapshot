@@ -3,34 +3,33 @@ package main
 import (
 	"encoding/gob"
 	"fmt"
+	"github.com/DistributedClocks/GoVector/govec"
+	"github.com/DistributedClocks/GoVector/govec/vrpc"
 	"globalSnapshot/src/node"
 	"globalSnapshot/src/snapshot"
 	"globalSnapshot/src/utils"
 	"net"
-	"net/http"
 	"net/rpc"
 	"os"
 	"strconv"
-	"time"
-	"github.com/DistributedClocks/GoVector/govec/vrpc"
 )
 
 type App struct {
-	snap 	*snapshot.SnapNode
-	node 	*node.Node
-	log 	*utils.Logger
+	snap         *snapshot.SnapNode
+	node         *node.Node
+	log          *utils.Logger
 	chSendAppMsg chan utils.OutMsg
 	chRecvAppMsg chan utils.Msg
 }
 
 func NewApp(idxNet int) *App {
 	var app App
-	app.chSendAppMsg = make(chan utils.OutMsg)	// node <--    msg   --- app
-	app.chRecvAppMsg = make(chan utils.Msg)	// node ---    msg   --> app
-	chRecvMark := make(chan utils.Msg)			// node --- mark|msg --> snap
+	app.chSendAppMsg = make(chan utils.OutMsg)  // node <--    msg   --- app
+	app.chRecvAppMsg = make(chan utils.Msg)     // node ---    msg   --> app
+	chRecvMark := make(chan utils.Msg)          // node --- mark|msg --> snap
 	chCurrentState := make(chan utils.AllState) // node <-- AllState --- snap
-	chRecvState := make(chan utils.AllState) 	// node --- AllState --> snap
-	chSendMark := make(chan utils.Msg)			// node <-- SendMark --> snap
+	chRecvState := make(chan utils.AllState)    // node --- AllState --> snap
+	chSendMark := make(chan utils.Msg)          // node <-- SendMark --> snap
 
 	// Register struct
 	gob.Register(utils.Msg{})
@@ -40,20 +39,20 @@ func NewApp(idxNet int) *App {
 	return &app
 }
 
-func (a *App) Receiver(rq *interface{}, resp *interface{}) error{
-	tick := time.Tick(100 * time.Millisecond)
-	for  {
+func (a *App) Receiver(rq *interface{}, resp *interface{}) error {
+	//tick := time.Tick(100 * time.Millisecond)
+	for {
 		select {
-			case <- tick:
-				fmt.Println(a.node.MyNodeInfo.Name + " ")
-			case msg := <- a.chRecvAppMsg:
-				fmt.Printf("Msg [%v] recv from: %s", msg.Body, msg.SrcName)
+		//case <- tick:
+		//	fmt.Println(a.node.MyNodeInfo.Name + " ")
+		case msg := <-a.chRecvAppMsg:
+			fmt.Printf("Msg [%v] recv from: %s", msg.Body, msg.SrcName)
 		}
 	}
 }
 
-func (a *App) MakeSnapshot(rq *interface{}, resp *interface{}) error{
-	gs:= a.snap.MakeSnapshot()
+func (a *App) MakeSnapshot(rq *interface{}, resp *interface{}) error {
+	gs := a.snap.MakeSnapshot()
 	a.log.Info.Printf("Received global state: %v\n", gs)
 	return nil
 }
@@ -63,12 +62,11 @@ func (a *App) SendMsg(rq *interface{}, resp *interface{}) error {
 	//TODO: convert it
 	fmt.Println("recibida petición")
 	a.chSendAppMsg <- locRq
-	for idx := range locRq.IdxDest{
+	for idx := range locRq.IdxDest {
 		fmt.Printf("Msg [%v] sent to: %s", locRq.Msg.Body, a.node.NetLayout.Nodes[idx].Name)
 	}
 	return nil
 }
-
 
 func main() {
 	args := os.Args[1:]
@@ -84,7 +82,9 @@ func main() {
 	myApp := NewApp(idx)
 	go myApp.Receiver(nil, nil)
 	// Register app as RPC
-	err = rpc.Register(myApp)
+	server := rpc.NewServer()
+	err = server.Register(myApp)
+	//err = rpc.Register(myApp)
 	if err != nil {
 		panic(err)
 	}
@@ -97,8 +97,10 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	err = http.Serve(l, nil)
-	if err != nil {
-		panic(err)
-	}
+	options := govec.GetDefaultLogOptions()
+	vrpc.ServeRPCConn(server, l, myApp.log.GoVector, options)
+	//err = http.Serve(l, nil)
+	//if err != nil {
+	//	panic(err)
+	//}
 }

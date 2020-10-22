@@ -1,50 +1,49 @@
 package snapshot
 
 import (
+	"github.com/DistributedClocks/GoVector/govec"
 	"globalSnapshot/src/utils"
 )
 
 type SnapNode struct {
-	idxNode      	int
-	Nodes    		[]utils.Node
+	idxNode int
+	Nodes   []utils.Node
 
-	NodeState		utils.NodeState
-	ChannelsStates 	map[string]utils.ChState
+	NodeState      utils.NodeState
+	ChannelsStates map[string]utils.ChState
 
-	ChCurrentState	chan utils.AllState
-	ChRecvState		chan utils.AllState
-	ChRecvMark		chan utils.Msg
-	ChSendMark		chan utils.Msg
-	ChAppGS			chan utils.GlobalState
-	ChInternalGs	chan utils.GlobalState
-	Logger 			*utils.Logger
+	ChCurrentState chan utils.AllState
+	ChRecvState    chan utils.AllState
+	ChRecvMark     chan utils.Msg
+	ChSendMark     chan utils.Msg
+	ChAppGS        chan utils.GlobalState
+	ChInternalGs   chan utils.GlobalState
+	Logger         *utils.Logger
 }
-
-
 
 func NewSnapNode(idxNet int, chRecvMark chan utils.Msg, chSendMark chan utils.Msg, chCurrentState chan utils.AllState, chRecvState chan utils.AllState, netLayout *utils.NetLayout, logger *utils.Logger) *SnapNode {
 	var myNode = netLayout.Nodes[idxNet]
 
 	snapNode := &SnapNode{
-		idxNode:    	idxNet,
-		Nodes:    		netLayout.Nodes,
+		idxNode:        idxNet,
+		Nodes:          netLayout.Nodes,
 		ChCurrentState: chCurrentState,
-		ChRecvState: 	chRecvState,
-		ChRecvMark: 	chRecvMark,
-		ChSendMark: 	chSendMark,
-		ChInternalGs: 	make(chan utils.GlobalState),
+		ChRecvState:    chRecvState,
+		ChRecvMark:     chRecvMark,
+		ChSendMark:     chSendMark,
+		ChInternalGs:   make(chan utils.GlobalState),
 
-		NodeState: 		utils.NodeState{SendMsg: make([]utils.Msg, 0), NodeName: myNode.Name},
+		NodeState:      utils.NodeState{SendMsg: make([]utils.Msg, 0), NodeName: myNode.Name},
 		ChannelsStates: map[string]utils.ChState{},
-		Logger:			logger,
+		Logger:         logger,
 	}
 	go snapNode.waitForSnapshot()
 	return snapNode
 }
-func (n* SnapNode) MakeSnapshot() utils.GlobalState {
+func (n *SnapNode) MakeSnapshot() utils.GlobalState {
 	n.Logger.Info.Println("Initializing snapshot...")
 	// Save node state, all prerecording msg (sent btw | prev-state ---- mark | are store on n.NodeState.SendMsg
-	n.NodeState.Busy = true	// While Busy cannot send new msg
+	n.NodeState.Busy = true // While Busy cannot send new msg
 
 	// Start channels recording
 	for _, c := range n.ChannelsStates {
@@ -63,11 +62,11 @@ func (n* SnapNode) MakeSnapshot() utils.GlobalState {
 	n.Logger.Info.Println("Sending first Mark...")
 	n.ChSendMark <- utils.NewMark(n.Nodes[n.idxNode].Name)
 
-	gs := <- n.ChInternalGs
+	gs := <-n.ChInternalGs
 	return gs
 }
 
-func (n*  SnapNode) waitForSnapshot(){
+func (n *SnapNode) waitForSnapshot() {
 	// Receive all marks
 	var nMarks int8 = 1 // my mark
 	for {
@@ -76,7 +75,7 @@ func (n*  SnapNode) waitForSnapshot(){
 		nMarks++
 
 		// First mark recv, save process state
-		if !n.NodeState.Busy{
+		if !n.NodeState.Busy {
 			n.Logger.Info.Printf("Recv first MARK from %s\n", mark.SrcName)
 			n.NodeState.Busy = true // While Busy cannot send new msg
 
@@ -102,7 +101,7 @@ func (n*  SnapNode) waitForSnapshot(){
 		if nMarks == int8(len(n.Nodes)) {
 			// Send current state to all
 			n.Logger.Info.Printf("Recv all MARKs\n")
-			//n.Logger.GoVector.LogLocalEvent("Recv all MARKs", govec.GetDefaultLogOptions())
+			n.Logger.GoVector.LogLocalEvent("Recv all MARKs", govec.GetDefaultLogOptions())
 			n.ChCurrentState <- utils.AllState{
 				Node:         n.NodeState,
 				Channels:     n.ChannelsStates,
@@ -115,8 +114,8 @@ func (n*  SnapNode) waitForSnapshot(){
 	// Gather global status and send to app
 	n.Logger.Info.Println("Beginning to gather states...")
 	var gs utils.GlobalState
-	for i:= 0; i < len(n.Nodes)-1; i++{
-		indState := <- n.ChRecvState
+	for i := 0; i < len(n.Nodes)-1; i++ {
+		indState := <-n.ChRecvState
 		gs.GS = append(gs.GS, indState)
 	}
 	n.Logger.Info.Println("All states gathered")

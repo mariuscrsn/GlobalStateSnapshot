@@ -3,10 +3,11 @@ Chandy-Lamport algorithm for snapshotting the global state of a distributed syst
 
 ## TODO
 
-- [ ] Añadir RPC
+- [X] Añadir RPC
+- [ ] Añadir retardos
+- [ ] Pub key via ssh connection
 - [ ] Test en local y verificar funcionamiento
 - [ ] Pruebas en distribuidos
 - [ ] Memoria
 - [ ] Limpiar Código
 
-Regex to ShiViz: `(?<host>\w*) (?<clock>.*)\n(?<event>.*)`

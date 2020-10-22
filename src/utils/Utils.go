@@ -10,45 +10,44 @@ import (
 	"os"
 )
 
-const OutputDirRel= "output/"
-const WorkDirPath  = "/home/cms/Escritorio/uni/redes/practicas/pr1/"
+const OutputDirRel = "output/"
+const WorkDirPath = "/home/cms/Escritorio/uni/redes/practicas/pr1/"
 
 type Logger struct {
 	// Logs
-	Trace   *log.Logger
-	Info    *log.Logger
-	Warning *log.Logger
-	Error   *log.Logger
+	Trace    *log.Logger
+	Info     *log.Logger
+	Warning  *log.Logger
+	Error    *log.Logger
 	GoVector *govec.GoLog
 }
 
-func InitLoggers(name string) *Logger{
+func InitLoggers(name string) *Logger {
 
 	// Initialize log
-	fLog, err := os.OpenFile(OutputDirRel+"Log_P"+ name + ".log", os.O_CREATE|os.O_WRONLY, 0666)
+	fLog, err := os.OpenFile(OutputDirRel+"Log_P"+name+".log", os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
 		log.Fatalln("Failed to open log file:", err)
 	}
 
 	myLogger := Logger{}
 	myLogger.Trace = log.New(fLog,
-		"TRACE: \t\t[P"+ name +"] ", log.Ltime| log.Lmicroseconds | log.Lshortfile)
+		"TRACE: \t\t[P"+name+"] ", log.Ltime|log.Lmicroseconds|log.Lshortfile)
 
 	myLogger.Info = log.New(fLog,
-		"INFO: \t\t[P"+ name +"] ", log.Ltime| log.Lmicroseconds | log.Lshortfile)
+		"INFO: \t\t[P"+name+"] ", log.Ltime|log.Lmicroseconds|log.Lshortfile)
 
 	myLogger.Warning = log.New(fLog,
-		"WARNING: \t[P"+ name +"] ", log.Ltime| log.Lmicroseconds | log.Lshortfile)
+		"WARNING: \t[P"+name+"] ", log.Ltime|log.Lmicroseconds|log.Lshortfile)
 
 	myLogger.Error = log.New(fLog,
-		"ERROR: \t\t[P"+ name +"] ", log.Ltime| log.Lmicroseconds | log.Lshortfile)
+		"ERROR: \t\t[P"+name+"] ", log.Ltime|log.Lmicroseconds|log.Lshortfile)
 
 	//Initialize GoVector logger
-	myLogger.GoVector = govec.InitGoVector("P"+name, OutputDirRel+"GoVector/LogFileP" + name, govec.GetDefaultConfig())
+	myLogger.GoVector = govec.InitGoVector("P"+name, OutputDirRel+"GoVector/LogFileP"+name, govec.GetDefaultConfig())
 
 	return &myLogger
 }
-
 
 func ReadConfig() NetLayout {
 	// read file
@@ -73,7 +72,6 @@ func RunRPCCommand(method string, conn *rpc.Client, content interface{}) {
 	var req interface{} = Msg{Body: content}
 	//resp := Msg{}
 	err := conn.Call(method, &req, nil)
-	fmt.Println(" peticion RPC")
 	if err != nil {
 		panic(err)
 	}

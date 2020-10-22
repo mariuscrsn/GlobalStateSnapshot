@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# ps aux | grep -E "Goland.*jediterm-bash.in" | grep -v grep | cut -d' ' -f8 | xargs -i kill {}
+# Make log directories
 LOG_DIR="output"
 rm -r ${LOG_DIR:?}/*
 if [ ! -d $LOG_DIR ]; then
@@ -8,16 +8,11 @@ if [ ! -d $LOG_DIR ]; then
 fi
 
 # Kill orphans proc
-netstat -tlpn 2>/dev/null | grep App | tr -s ' '| cut -d'/' -f1 | cut -d' ' -f7 | xargs -i kill {}
+netstat -tlpn 2>/dev/null | grep App | grep 160 | tr -s ' '| cut -d'/' -f1 | cut -d' ' -f7 | xargs -i kill {}
 
-cd test || exit
-go build app.go
-for i in {0..3} ; do
-    ./app "$i" &
-    sleep 0.05
-done
+/usr/local/go/bin/go test -v globalSnapshot_test.go
 
-sleep 10
-cd .. && sort -k 3  ${LOG_DIR:?}/*.log  > ${LOG_DIR:?}/completeLog.log
+# Merge logs
+sort -k 3  ${LOG_DIR:?}/*.log  > ${LOG_DIR:?}/completeLog.log
 echo -e "(?<host>\w*) (?<clock>.*)\\\n(?<event>.*)\n" > ${LOG_DIR:?}/GoVector/completeGoVectorLog.log
-cat ${LOG_DIR:?}/GoVector/*.txt  >> ${LOG_DIR:?}/GoVector/completeGoVectorLog.log
+cat ${LOG_DIR:?}/GoVector/LogFileP*.txt  >> ${LOG_DIR:?}/GoVector/completeGoVectorLog.log

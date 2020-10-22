@@ -2,7 +2,6 @@ package utils
 
 import (
 	"bufio"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -111,7 +110,7 @@ func RunCommandSSH(cmd string, conn *ssh.Client) {
 	// setup standard out and error
 	sess.Stdout = os.Stdout
 	sess.Stderr = os.Stderr
-	fmt.Println(cmd)
+	//fmt.Println(cmd)
 	err = sess.Run(cmd) // Execute command
 	if err != nil && !strings.Contains(cmd, "pkill") {
 		panic(err)
