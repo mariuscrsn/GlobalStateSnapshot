@@ -40,14 +40,9 @@ func NewApp(idxNet int) *App {
 }
 
 func (a *App) Receiver(rq *interface{}, resp *interface{}) error {
-	//tick := time.Tick(100 * time.Millisecond)
 	for {
-		select {
-		//case <- tick:
-		//	fmt.Println(a.node.MyNodeInfo.Name + " ")
-		case msg := <-a.chRecvAppMsg:
-			fmt.Printf("Msg [%v] recv from: %s", msg.Body, msg.SrcName)
-		}
+		msg := <-a.chRecvAppMsg
+		fmt.Printf("Msg [%v] recv from: %s", msg.Body, msg.SrcName)
 	}
 }
 
@@ -57,10 +52,8 @@ func (a *App) MakeSnapshot(rq *interface{}, resp *interface{}) error {
 	return nil
 }
 
-func (a *App) SendMsg(rq *interface{}, resp *interface{}) error {
+func (a *App) SendMsg(rq *utils.OutMsg, resp *interface{}) error {
 	var locRq utils.OutMsg
-	//TODO: convert it
-	fmt.Println("recibida petición")
 	a.chSendAppMsg <- locRq
 	for idx := range locRq.IdxDest {
 		fmt.Printf("Msg [%v] sent to: %s", locRq.Msg.Body, a.node.NetLayout.Nodes[idx].Name)
@@ -78,13 +71,13 @@ func main() {
 	if err != nil {
 		panic(fmt.Sprintf("Bad argument[0]: %s. Error: %s. Usage: go run grpCausal.go <0-based index node> <RPC port>", args[0], err))
 	}
-	fmt.Println("Starting process ", idx)
+	fmt.Println("Starting P", idx)
 	myApp := NewApp(idx)
 	go myApp.Receiver(nil, nil)
+
 	// Register app as RPC
 	server := rpc.NewServer()
 	err = server.Register(myApp)
-	//err = rpc.Register(myApp)
 	if err != nil {
 		panic(err)
 	}
@@ -99,8 +92,5 @@ func main() {
 	}
 	options := govec.GetDefaultLogOptions()
 	vrpc.ServeRPCConn(server, l, myApp.log.GoVector, options)
-	//err = http.Serve(l, nil)
-	//if err != nil {
-	//	panic(err)
-	//}
+	return
 }

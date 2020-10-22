@@ -112,9 +112,9 @@ func RunCommandSSH(cmd string, conn *ssh.Client) {
 	sess.Stderr = os.Stderr
 	//fmt.Println(cmd)
 	err = sess.Run(cmd) // Execute command
-	if err != nil && !strings.Contains(cmd, "pkill") {
-		panic(err)
-	}
+	//if err != nil && !strings.Contains(cmd, "pkill") {
+	//	panic(err)
+	//}
 
 	_ = sess.Close()
 }
