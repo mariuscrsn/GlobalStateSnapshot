@@ -18,11 +18,23 @@ type SnapNode struct {
 	ChSendMark     chan utils.Msg
 	ChAppGS        chan utils.GlobalState
 	ChInternalGs   chan utils.GlobalState
+	IsLauncher     bool
 	Logger         *utils.Logger
 }
 
 func NewSnapNode(idxNet int, chRecvMark chan utils.Msg, chSendMark chan utils.Msg, chCurrentState chan utils.AllState, chRecvState chan utils.AllState, netLayout *utils.NetLayout, logger *utils.Logger) *SnapNode {
 	var myNode = netLayout.Nodes[idxNet]
+
+	// Create channels state
+	chsState := make(map[string]utils.ChState)
+	for idx, node := range netLayout.Nodes {
+		if idx != idxNet {
+			chsState[node.Name] = utils.ChState{
+				RecvMsg:   make([]utils.Msg, 0),
+				Recording: false,
+			}
+		}
+	}
 
 	snapNode := &SnapNode{
 		idxNode:        idxNet,
@@ -34,7 +46,7 @@ func NewSnapNode(idxNet int, chRecvMark chan utils.Msg, chSendMark chan utils.Ms
 		ChInternalGs:   make(chan utils.GlobalState),
 
 		NodeState:      utils.NodeState{SendMsg: make([]utils.Msg, 0), NodeName: myNode.Name},
-		ChannelsStates: map[string]utils.ChState{},
+		ChannelsStates: chsState,
 		Logger:         logger,
 	}
 	go snapNode.waitForSnapshot()
@@ -43,12 +55,15 @@ func NewSnapNode(idxNet int, chRecvMark chan utils.Msg, chSendMark chan utils.Ms
 func (n *SnapNode) MakeSnapshot() utils.GlobalState {
 	n.Logger.Info.Println("Initializing snapshot...")
 	// Save node state, all prerecording msg (sent btw | prev-state ---- mark | are store on n.NodeState.SendMsg
+	n.IsLauncher = true
 	n.NodeState.Busy = true // While Busy cannot send new msg
 
 	// Start channels recording
-	for _, c := range n.ChannelsStates {
-		c.Recording = true
-		c.RecvMsg = make([]utils.Msg, 0)
+	for chKey := range n.ChannelsStates {
+		n.ChannelsStates[chKey] = utils.ChState{
+			RecvMsg:   make([]utils.Msg, 0),
+			Recording: true,
+		}
 	}
 
 	// Update state on
@@ -80,28 +95,30 @@ func (n *SnapNode) waitForSnapshot() {
 			n.NodeState.Busy = true // While Busy cannot send new msg
 
 			// Start channels recording
-			for _, c := range n.ChannelsStates {
-				if c.Sender != mark.SrcName { // Mark channel not record
-					c.Recording = true
+			for chKey := range n.ChannelsStates {
+				n.ChannelsStates[chKey] = utils.ChState{
+					RecvMsg:   make([]utils.Msg, 0),
+					Recording: true,
 				}
-				c.RecvMsg = make([]utils.Msg, 0)
 			}
 
 			// Send broadcast marks
-			n.Logger.Trace.Printf("Send broadcast Mark\n")
+			n.Logger.Info.Printf("Send broadcast Mark\n")
 			n.ChSendMark <- mark
 		} else {
 			// NOT First mark recv, stop recording channel
-			n.Logger.Trace.Printf("Recv another MARK from %s\n", mark.SrcName)
-			tempChState := n.ChannelsStates[mark.SrcName]
-			tempChState.Recording = false
-			n.ChannelsStates[mark.SrcName] = tempChState
+			n.Logger.Info.Printf("Recv another MARK from %s\n", mark.SrcName)
 		}
+
+		tempChState := n.ChannelsStates[mark.SrcName]
+		tempChState.Recording = false
+		n.ChannelsStates[mark.SrcName] = tempChState
 
 		if nMarks == int8(len(n.Nodes)) {
 			// Send current state to all
 			n.Logger.Info.Printf("Recv all MARKs\n")
 			n.Logger.GoVector.LogLocalEvent("Recv all MARKs", govec.GetDefaultLogOptions())
+			n.Logger.Info.Println("Sending my state to all")
 			n.ChCurrentState <- utils.AllState{
 				Node:         n.NodeState,
 				Channels:     n.ChannelsStates,
@@ -114,15 +131,32 @@ func (n *SnapNode) waitForSnapshot() {
 	// Gather global status and send to app
 	n.Logger.Info.Println("Beginning to gather states...")
 	var gs utils.GlobalState
+	gs.GS = append(gs.GS, utils.AllState{
+		Node:         n.NodeState,
+		Channels:     n.ChannelsStates,
+		RecvAllMarks: true,
+	})
 	for i := 0; i < len(n.Nodes)-1; i++ {
 		indState := <-n.ChRecvState
+		n.Logger.Info.Printf("Recv State from: %s\n", indState.Node.NodeName)
 		gs.GS = append(gs.GS, indState)
 	}
 	n.Logger.Info.Println("All states gathered")
 
 	// Restore process state
-	n.NodeState.SendMsg = make([]utils.Msg, 0)
 	n.NodeState.Busy = false
+	n.NodeState.SendMsg = make([]utils.Msg, 0)
 
-	n.ChInternalGs <- gs
+	// Inform node to continue receiving msg
+	n.ChCurrentState <- utils.AllState{
+		Node:         n.NodeState,
+		Channels:     n.ChannelsStates,
+		RecvAllMarks: false,
+	}
+
+	// Send gs to launcher
+	if n.IsLauncher {
+		n.ChInternalGs <- gs
+		n.IsLauncher = false
+	}
 }

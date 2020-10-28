@@ -12,6 +12,7 @@ import (
 	"net/rpc"
 	"os"
 	"strconv"
+	"time"
 )
 
 type App struct {
@@ -24,12 +25,12 @@ type App struct {
 
 func NewApp(idxNet int) *App {
 	var app App
-	app.chSendAppMsg = make(chan utils.OutMsg)  // node <--    msg   --- app
-	app.chRecvAppMsg = make(chan utils.Msg)     // node ---    msg   --> app
-	chRecvMark := make(chan utils.Msg)          // node --- mark|msg --> snap
-	chCurrentState := make(chan utils.AllState) // node <-- AllState --- snap
-	chRecvState := make(chan utils.AllState)    // node --- AllState --> snap
-	chSendMark := make(chan utils.Msg)          // node <-- SendMark --> snap
+	app.chSendAppMsg = make(chan utils.OutMsg, 10)  // node <--    msg   --- app
+	app.chRecvAppMsg = make(chan utils.Msg, 10)     // node ---    msg   --> app
+	chRecvMark := make(chan utils.Msg, 10)          // node --- mark|msg --> snap
+	chCurrentState := make(chan utils.AllState, 10) // node <-- AllState --- snap
+	chRecvState := make(chan utils.AllState, 10)    // node --- AllState --> snap
+	chSendMark := make(chan utils.Msg, 10)          // node <-- SendMark --> snap
 
 	// Register struct
 	gob.Register(utils.Msg{})
@@ -42,21 +43,25 @@ func NewApp(idxNet int) *App {
 func (a *App) Receiver(rq *interface{}, resp *interface{}) error {
 	for {
 		msg := <-a.chRecvAppMsg
-		fmt.Printf("Msg [%v] recv from: %s", msg.Body, msg.SrcName)
+		a.log.Info.Printf("Msg [%v] recv from: %s\n", msg.Body, msg.SrcName)
 	}
 }
 
 func (a *App) MakeSnapshot(rq *interface{}, resp *interface{}) error {
 	gs := a.snap.MakeSnapshot()
-	a.log.Info.Printf("Received global state: %v\n", gs)
+	a.log.Info.Printf("Received global state: %s\n", gs)
 	return nil
 }
 
 func (a *App) SendMsg(rq *utils.OutMsg, resp *interface{}) error {
-	var locRq utils.OutMsg
-	a.chSendAppMsg <- locRq
-	for idx := range locRq.IdxDest {
-		fmt.Printf("Msg [%v] sent to: %s", locRq.Msg.Body, a.node.NetLayout.Nodes[idx].Name)
+	a.chSendAppMsg <- *rq
+	for _, idx := range rq.IdxDest {
+		a.log.Info.Printf("Msg [%v] sent to: %s\n", rq.Msg.Body, a.node.NetLayout.Nodes[idx].Name)
+	}
+	res := <-a.chSendAppMsg
+	if res.IdxDest != nil {
+		time.Sleep(1 * time.Second)
+		_ = a.SendMsg(rq, resp)
 	}
 	return nil
 }
@@ -71,7 +76,7 @@ func main() {
 	if err != nil {
 		panic(fmt.Sprintf("Bad argument[0]: %s. Error: %s. Usage: go run grpCausal.go <0-based index node> <RPC port>", args[0], err))
 	}
-	fmt.Println("Starting P", idx)
+	fmt.Printf("Starting P%d\n", idx)
 	myApp := NewApp(idx)
 	go myApp.Receiver(nil, nil)
 

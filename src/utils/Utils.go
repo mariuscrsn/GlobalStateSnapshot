@@ -44,7 +44,9 @@ func InitLoggers(name string) *Logger {
 		"ERROR: \t\t[P"+name+"] ", log.Ltime|log.Lmicroseconds|log.Lshortfile)
 
 	//Initialize GoVector logger
-	myLogger.GoVector = govec.InitGoVector("P"+name, OutputDirRel+"GoVector/LogFileP"+name, govec.GetDefaultConfig())
+	config := govec.GetDefaultConfig()
+	config.UseTimestamps = true
+	myLogger.GoVector = govec.InitGoVector("P"+name, OutputDirRel+"GoVector/LogFileP"+name, config)
 
 	return &myLogger
 }
@@ -68,11 +70,10 @@ func ReadConfig() NetLayout {
 	return netCfg
 }
 
-func RunRPCCommand(method string, conn *rpc.Client, content interface{}) {
-	var req interface{} = Msg{Body: content}
-	//resp := Msg{}
-	err := conn.Call(method, &req, nil)
+func RunRPCCommand(method string, conn *rpc.Client, content interface{}, resp int, chResp chan int) {
+	err := conn.Call(method, &content, nil)
 	if err != nil {
 		panic(err)
 	}
+	chResp <- resp
 }

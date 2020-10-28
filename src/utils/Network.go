@@ -6,6 +6,7 @@ type Node struct {
 	IP      string `json:"IP"`
 	Port    int    `json:"Port"`
 	RPCPort int    `json:"RPCPort"`
+	Delays  []int  `json:"Delays"`
 }
 
 type NetLayout struct {

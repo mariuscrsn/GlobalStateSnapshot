@@ -6,6 +6,8 @@ import (
 	"globalSnapshot/src/utils"
 	"net"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 )
 
@@ -25,6 +27,7 @@ type Node struct {
 	ChSendAppMsg   chan utils.OutMsg
 	ChRecvAppMsg   chan utils.Msg
 	Logger         *utils.Logger
+	Mutex          sync.Mutex
 }
 
 type ErrorNode struct {
@@ -53,8 +56,6 @@ func NewNode(idxNet int, chRecvAppMsg chan utils.Msg, chSendAppMsg chan utils.Ou
 			chsState[node.Name] = utils.ChState{
 				RecvMsg:   make([]utils.Msg, 0),
 				Recording: false,
-				Sender:    myNode.Name,
-				Recv:      node.Name,
 			}
 		}
 	}
@@ -77,6 +78,7 @@ func NewNode(idxNet int, chRecvAppMsg chan utils.Msg, chSendAppMsg chan utils.Ou
 		ChRecvMark:     chRecvMark,
 		ChSendMark:     chSendMark,
 		Logger:         logger,
+		Mutex:          sync.Mutex{},
 	}
 
 	tempNode.Logger.Trace.Printf("Listening on port: %s", strconv.Itoa(myNode.Port))
@@ -99,71 +101,85 @@ func (n *Node) receiver() *utils.Msg {
 		if err != nil {
 			n.Logger.Error.Panicf("Server accept connection error: %s", err)
 		}
-
-		if n.AllState.RecvAllMarks { // Waiting for states of the rest of the nodes
-			var tempState = utils.AllState{}
-			n.Logger.GoVector.UnpackReceive("Receiving State", recvData[0:nBytes], &tempState, govec.GetDefaultLogOptions())
-			// Send state to snapshot
-			n.Logger.Info.Printf("Recv State from: %s\n", tempState.Node.NodeName)
-			n.ChRecvState <- tempState
-		} else { // Waiting for MSG or marks
+		n.Mutex.Lock()
+		locState := n.AllState
+		n.Mutex.Unlock()
+		//TODO: en estas 2 ramas se bloquea en alguna si los canales son síncronos, no buferrizados
+		if !strings.Contains(string(recvData[:]), "Channels") {
+			// Waiting for MSG or marks
 			var tempMsg utils.Msg
 			n.Logger.GoVector.UnpackReceive("Receiving Message", recvData[0:nBytes], &tempMsg, govec.GetDefaultLogOptions())
 			// Send data to snapshot
 			if tempMsg.Body == utils.BodyMark {
-				n.Logger.Info.Printf("MARK Recv from: %s\n", tempMsg.SrcName)
 				n.ChRecvMark <- tempMsg
 			} else {
+				n.Logger.GoVector.LogLocalEvent(fmt.Sprintf("MSG content: %s, from [%s]", tempMsg.Body, tempMsg.SrcName), govec.GetDefaultLogOptions())
 				n.ChRecvAppMsg <- tempMsg
-				n.Logger.Info.Printf("Msg Recv: %s\t From: %s\n", tempMsg.Body, tempMsg.SrcName)
-				if n.AllState.Node.Busy {
+				if locState.Node.Busy {
 					n.ChRecvMark <- tempMsg // Send msg to snapshot for channel recording
 				}
 			}
+		} else {
+			//if locState.RecvAllMarks { // Waiting for states of the rest of the nodes
+			var tempState = utils.AllState{}
+			n.Logger.GoVector.UnpackReceive("Receiving State", recvData[0:nBytes], &tempState, govec.GetDefaultLogOptions())
+			// Send state to snapshot
+			n.ChRecvState <- tempState
 		}
 	}
 }
 
 func (n *Node) sender() {
-	var chAux chan utils.OutMsg
 	opts := govec.GetDefaultLogOptions()
 	var outBuf []byte
 	outBuf = []byte{'A', 'B'}
 	for {
 		select {
 		case detMsg := <-n.ChSendAppMsg:
-			if !n.AllState.Node.Busy { // it is not performing a global snapshot
+			n.Mutex.Lock()
+			locState := n.AllState
+			n.Mutex.Unlock()
+			if !locState.Node.Busy { // it is not performing a global snapshot
 				msg := detMsg.Msg
 				msg.SrcName = n.MyNodeInfo.Name
-				outBuf = n.Logger.GoVector.PrepareSend("Sending msg", msg, opts)
+				outBuf = n.Logger.GoVector.PrepareSend(fmt.Sprintf("Sending msg: %s", msg.Body), msg, opts)
 				if err := n.sendGroup(outBuf, &detMsg); err != nil {
 					n.Logger.Error.Panicf("Cannot send app msg: %s", err)
 				}
+				n.ChSendAppMsg <- utils.OutMsg{
+					Msg:     utils.Msg{},
+					IdxDest: nil,
+					Delays:  nil,
+				}
+			} else {
+				n.Logger.Warning.Println("Cannot send app msg while node is performing global snapshot")
+				n.ChSendAppMsg <- detMsg
 			}
 		case <-n.ChSendMark:
 			// Block app msg if not blocked yet
-			if n.ChSendMark != nil {
-				chAux = n.ChSendAppMsg
-				n.ChSendMark = nil
-			}
+			//if n.ChSendMark != nil {
+			//	chAux = n.ChSendAppMsg
+			//	n.ChSendMark = nil
+			//}
 			// Send mark
-			outBuf := n.Logger.GoVector.PrepareSend("Sending mark", utils.Msg{
+			mark := utils.Msg{
 				SrcName: n.MyNodeInfo.Name,
-				Body:    utils.BodyMark,
-			}, opts)
+				Body:    utils.BodyMark}
+			outBuf := n.Logger.GoVector.PrepareSend("Sending mark", mark, opts)
 			err := n.sendGroup(outBuf, nil)
 			if err != nil {
 				n.Logger.Error.Panicf("Cannot send initial mark: %s", err)
 			}
 		case state := <-n.ChCurrentState:
+			n.Mutex.Lock()
 			n.AllState = state
-			if !n.AllState.Node.Busy { // Restart app msg sending
-				n.ChSendAppMsg = chAux
-			}
+			n.Mutex.Unlock()
+			//if !n.AllState.Node.Busy { // Restart app msg sending
+			//	n.ChSendAppMsg = chAux
+			//}
 			n.Logger.Info.Println("Node state updated")
-			if n.AllState.RecvAllMarks {
-				n.Logger.Info.Println("Sending my state to all")
-				outBuf := n.Logger.GoVector.PrepareSend("Sending my state to all", n.AllState, opts)
+			if state.RecvAllMarks {
+				outBuf := n.Logger.GoVector.PrepareSend("Sending my state to all", state, opts)
 				if err := n.sendGroup(outBuf, nil); err != nil {
 					n.Logger.Error.Panicf("Cannot send app msg: %s", err)
 				}
@@ -177,18 +193,29 @@ func (n *Node) sendGroup(data []byte, outMsg *utils.OutMsg) error {
 	if outMsg == nil { // sending state
 		for _, node := range n.NetLayout.Nodes {
 			if node.Name != n.MyNodeInfo.Name {
+				n.Logger.Info.Printf("Sending state to: %s\n", node.Name)
 				go n.sendDirectMsg(data, node, 0)
 			}
 		}
-	} else { // sending msg
-		if n.AllState.Node.Busy && outMsg.Msg.Body != utils.BodyMark {
-			return &ErrorNode{"Cannot send msg while global snapshot process is running"}
-		}
-
-		for i, idxNode := range outMsg.IdxDest {
-			node := n.NetLayout.Nodes[idxNode]
-			if node.Name != n.MyNodeInfo.Name {
-				go n.sendDirectMsg(data, node, outMsg.Delays[i])
+	} else { // sending mark
+		if outMsg.Msg.Body == utils.BodyMark {
+			for i, node := range n.NetLayout.Nodes {
+				if node.Name != n.MyNodeInfo.Name {
+					go n.sendDirectMsg(data, node, n.MyNodeInfo.Delays[i])
+				}
+			}
+		} else { // sending msg
+			//n.Mutex.Lock()
+			//state := n.AllState
+			//n.Mutex.Unlock()
+			//if state.Node.Busy  {
+			//	return &ErrorNode{"Cannot send msg while global snapshot process is running"}
+			//}
+			for i, idxNode := range outMsg.IdxDest {
+				node := n.NetLayout.Nodes[idxNode]
+				if node.Name != n.MyNodeInfo.Name {
+					go n.sendDirectMsg(data, node, outMsg.Delays[i])
+				}
 			}
 		}
 	}
@@ -199,6 +226,7 @@ func (n *Node) sendDirectMsg(msg []byte, node utils.Node, delay int) {
 	var conn net.Conn
 	var err error
 
+	time.Sleep(time.Duration(delay) * time.Second)
 	netAddr := fmt.Sprint(node.IP + ":" + strconv.Itoa(node.Port))
 	conn, err = net.Dial("tcp", netAddr)
 	for i := 0; err != nil && i < n.NetLayout.AttemptsSend; i++ {
@@ -209,7 +237,6 @@ func (n *Node) sendDirectMsg(msg []byte, node utils.Node, delay int) {
 	if err != nil || conn == nil {
 		n.Logger.Error.Panicf("Client connection error: %v", err)
 	}
-	time.Sleep(time.Duration(delay) * time.Millisecond)
 	_, err = conn.Write(msg)
 	if err != nil {
 		n.Logger.Error.Panicf("Sending data error: %v", err)

@@ -5,21 +5,24 @@
       "User" : "cms",
       "IP" : "127.0.0.1",
       "Port" : 16090,
-      "RPCPort" : 26090
+      "RPCPort" : 26090,
+      "Delays" : [0, 0, 0]
     },
     {
       "Name" : "P1",
       "User" : "cms",
       "IP" : "127.0.0.1",
       "Port" : 16091,
-      "RPCPort" : 26091
+      "RPCPort" : 26091,
+      "Delays" : [0, 0, 0]
     },
     {
-      "Name" : "P2",  
-      "User" : "cms",  
+      "Name" : "P2",
+      "User" : "cms",
       "IP" : "127.0.0.1",
       "PORT" : 16092,
-      "RPCPort" : 26092
+      "RPCPort" : 26092,
+      "Delays" : [0, 0, 0]
     }
   ],
   "attemptsSend": 10
