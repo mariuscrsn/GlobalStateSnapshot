@@ -3,7 +3,8 @@ package utils
 import "fmt"
 
 type NodeState struct {
-	SendMsg  []Msg
+	SendMsg  map[string]Msg
+	RecvMsg  []Msg
 	NodeName string
 	Busy     bool // Node is doing a snapshot
 }
@@ -13,8 +14,13 @@ func (n NodeState) String() string {
 	//if n.Busy {
 	//	res += "IS BUSY!!!!!!!!!!!!\n"
 	//}
-	res += "[ "
-	for _, m := range n.SendMsg {
+	res += "Sent: [ "
+	for node, m := range n.SendMsg {
+		res += fmt.Sprintf(" %s-> %s,", m.Body, node)
+	}
+	res += " ], "
+	res += "Recv: [ "
+	for _, m := range n.RecvMsg {
 		res += fmt.Sprintf(" %s,", m.Body)
 	}
 	res += " ]"
@@ -47,7 +53,7 @@ func (as AllState) String() string {
 	res := fmt.Sprintf("\nState: %s", as.Node)
 	res += fmt.Sprintf("\nChanels:\n")
 	for chKey := range as.Channels {
-		res += fmt.Sprintf("[ %s ] ==> %s,", chKey, as.Channels[chKey])
+		res += fmt.Sprintf("[ %s ] ==> %s;", chKey, as.Channels[chKey])
 	}
 	if !as.RecvAllMarks {
 		res += "\n----------------NOT RECEIVED ALL MARKS---------"

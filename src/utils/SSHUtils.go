@@ -2,7 +2,6 @@ package utils
 
 import (
 	"bufio"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -20,8 +19,8 @@ const (
 
 func ConnectSSH(user string, host string) *ssh.Client {
 	// get host public key
-	hostKey := getHostKey(host)
-	fmt.Println(hostKey)
+	//hostKey := getHostKey(host)
+	//fmt.Println(hostKey)
 	// ssh client config
 	config := &ssh.ClientConfig{
 		User: user,
@@ -29,10 +28,10 @@ func ConnectSSH(user string, host string) *ssh.Client {
 			getPublicKey(PrivateKeyPath),
 		},
 		// allow any host key to be used (non-prod)
-		//HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 
 		// verify host public key
-		HostKeyCallback: ssh.FixedHostKey(hostKey),
+		//HostKeyCallback: ssh.FixedHostKey(hostKey),
 		// optional host key algo list
 		HostKeyAlgorithms: []string{
 			ssh.KeyAlgoRSA,

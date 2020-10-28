@@ -71,64 +71,94 @@ func terminate() {
 	}
 }
 
-//func TestEmptySnapshot(t *testing.T) {
-//	utils.RunRPCCommand("App.MakeSnapshot", RPCConn["P0"], nil)
-//}
+/*
+func TestEmptySnapshot(t *testing.T) {
+	utils.RunRPCCommand("App.MakeSnapshot", RPCConn["P0"], nil)
+}
 
-func TestMsgAndSnapshot(t *testing.T) {
-	msg := utils.OutMsg{
-		Msg:     utils.Msg{SrcName: "P0", Body: "MS1"},
-		IdxDest: []int{1},
-		Delays:  []int{0},
-	}
-	NMsg := 5
-	NSnap := 1
-	chRespMsg := make(chan int, NMsg)
-	chRespSnap := make(chan int, NSnap)
-	go utils.RunRPCCommand("App.SendMsg", RPCConn["P0"], msg, 1, chRespMsg)
-	fmt.Println("Test: ordered 1st msg")
-	msg.Msg = utils.Msg{
-		SrcName: "P2",
-		Body:    "MSG2",
-	}
-	msg.Delays = []int{0}
-	go utils.RunRPCCommand("App.SendMsg", RPCConn["P2"], msg, 2, chRespMsg)
-	fmt.Println("Test: ordered 2nd msg")
-	//time.Sleep(3*time.Second)
+*/
 
-	go utils.RunRPCCommand("App.MakeSnapshot", RPCConn["P0"], nil, 1, chRespSnap)
-	fmt.Println("Test: ordered GS")
-	msg = utils.OutMsg{
-		Msg:     utils.Msg{SrcName: "P1", Body: "MS3"},
-		IdxDest: []int{0},
-		Delays:  []int{0},
-	}
-	fmt.Println("Test: ordered 3rd msg")
-	go utils.RunRPCCommand("App.SendMsg", RPCConn["P1"], msg, 3, chRespMsg)
-	msg = utils.OutMsg{
-		Msg:     utils.Msg{SrcName: "P1", Body: "MS4"},
-		IdxDest: []int{2},
-		Delays:  []int{0},
-	}
-	go utils.RunRPCCommand("App.SendMsg", RPCConn["P1"], msg, 4, chRespMsg)
-	fmt.Println("Test: ordered 4th msg")
-	msg = utils.OutMsg{
+/*
+func TestSimple(t *testing.T) {
+	chRespMsg := make(chan int, 1)
+	chRespSnap := make(chan utils.GlobalState, 1)
+	msg5 := utils.OutMsg{
 		Msg:     utils.Msg{SrcName: "P0", Body: "MS5 - last"},
 		IdxDest: []int{2},
 		Delays:  []int{0},
 	}
-	go utils.RunRPCCommand("App.SendMsg", RPCConn["P1"], msg, 5, chRespMsg)
+	utils.RunRPCCommand("App.SendMsg", RPCConn["P0"], msg5, 5, chRespMsg)
 	fmt.Println("Test: ordered 5th msg")
+
+	fmt.Println("Test: ordered last GS")
+	utils.RunRPCSnapshot( RPCConn["P1"], chRespSnap)
+	gs := <-chRespSnap
+	fmt.Printf("Snapshot completed: %s\n", gs)
+}
+*/
+
+func TestMsgAndSnapshot(t *testing.T) {
+	NMsg := 4
+	chRespMsg := make(chan int, NMsg)
+	chRespSnap := make(chan utils.GlobalState, 1)
+	msg1 := utils.OutMsg{
+		Msg:     utils.Msg{SrcName: "P0", Body: "MS1"},
+		IdxDest: []int{1},
+		Delays:  []int{0},
+	}
+	go utils.RunRPCCommand("App.SendMsg", RPCConn["P0"], msg1, 1, chRespMsg)
+	fmt.Println("Test: ordered 1st msg")
+
+	msg2 := utils.OutMsg{
+		Msg: utils.Msg{
+			SrcName: "P2",
+			Body:    "MSG2"},
+		IdxDest: []int{1},
+		Delays:  []int{0},
+	}
+	go utils.RunRPCCommand("App.SendMsg", RPCConn["P2"], msg2, 2, chRespMsg)
+	fmt.Println("Test: ordered 2nd msg")
+
+	time.Sleep(2 * time.Second)
+	go utils.RunRPCSnapshot(RPCConn["P0"], chRespSnap)
+	fmt.Println("Test: ordered GS")
+
+	time.Sleep(4 * time.Second)
+	msg3 := utils.OutMsg{
+		Msg:     utils.Msg{SrcName: "P1", Body: "MS3"},
+		IdxDest: []int{0},
+		Delays:  []int{0},
+	}
+	utils.RunRPCCommand("App.SendMsg", RPCConn["P1"], msg3, 3, chRespMsg)
+	fmt.Println("Test: ordered 3rd msg")
+
+	msg4 := utils.OutMsg{
+		Msg:     utils.Msg{SrcName: "P1", Body: "MS4"},
+		IdxDest: []int{2},
+		Delays:  []int{0},
+	}
+	utils.RunRPCCommand("App.SendMsg", RPCConn["P1"], msg4, 4, chRespMsg)
+	fmt.Println("Test: ordered 4th msg")
+
 	for i := 0; i < NMsg; i++ {
 		nMsg := <-chRespMsg
 		fmt.Printf("Msg nº: %d sent\n", nMsg)
 	}
 	fmt.Println("All msg sent")
-	_ = <-chRespSnap
-	fmt.Println("Snapshot completed")
+	gs := <-chRespSnap
+	fmt.Printf("Snapshot completed: %s\n", gs)
 
-	//time.Sleep(2*time.Second)
-	//fmt.Println("Test: ordering last GS")
-	//utils.RunRPCCommand("App.MakeSnapshot", RPCConn["P1"], nil)
-	//fmt.Println("Test: ordered last GS")
+	msg5 := utils.OutMsg{
+		Msg:     utils.Msg{SrcName: "P0", Body: "MS5 - last"},
+		IdxDest: []int{2},
+		Delays:  []int{0},
+	}
+	utils.RunRPCCommand("App.SendMsg", RPCConn["P0"], msg5, 5, chRespMsg)
+	fmt.Println("Test: ordered 5th msg")
+
+	time.Sleep(10 * time.Second)
+	fmt.Println("Test: ordered last GS")
+	utils.RunRPCSnapshot(RPCConn["P1"], chRespSnap)
+	gs = <-chRespSnap
+	fmt.Printf("Snapshot completed: %s\n", gs)
 }

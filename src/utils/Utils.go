@@ -70,6 +70,17 @@ func ReadConfig() NetLayout {
 	return netCfg
 }
 
+func RunRPCSnapshot(conn *rpc.Client, chResp chan GlobalState) {
+	go func() {
+		var gs GlobalState
+		err := conn.Call("App.MakeSnapshot", nil, &gs)
+		if err != nil {
+			panic(err)
+		}
+		chResp <- gs
+	}()
+}
+
 func RunRPCCommand(method string, conn *rpc.Client, content interface{}, resp int, chResp chan int) {
 	err := conn.Call(method, &content, nil)
 	if err != nil {

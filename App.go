@@ -31,12 +31,13 @@ func NewApp(idxNet int) *App {
 	chCurrentState := make(chan utils.AllState, 10) // node <-- AllState --- snap
 	chRecvState := make(chan utils.AllState, 10)    // node --- AllState --> snap
 	chSendMark := make(chan utils.Msg, 10)          // node <-- SendMark --> snap
+	chSendMsg := make(chan utils.OutMsg, 10)        // node <-- SendMark --> snap
 
 	// Register struct
 	gob.Register(utils.Msg{})
 	app.log = utils.InitLoggers(strconv.Itoa(idxNet))
-	app.node = node.NewNode(idxNet, app.chRecvAppMsg, app.chSendAppMsg, chRecvMark, chSendMark, chCurrentState, chRecvState, app.log)
-	app.snap = snapshot.NewSnapNode(idxNet, chRecvMark, chSendMark, chCurrentState, chRecvState, &app.node.NetLayout, app.log)
+	app.node = node.NewNode(idxNet, app.chRecvAppMsg, app.chSendAppMsg, chRecvMark, chSendMark, chSendMsg, chCurrentState, chRecvState, app.log)
+	app.snap = snapshot.NewSnapNode(idxNet, chRecvMark, chSendMark, chSendMsg, chCurrentState, chRecvState, &app.node.NetLayout, app.log)
 	return &app
 }
 
@@ -47,9 +48,9 @@ func (a *App) Receiver(rq *interface{}, resp *interface{}) error {
 	}
 }
 
-func (a *App) MakeSnapshot(rq *interface{}, resp *interface{}) error {
-	gs := a.snap.MakeSnapshot()
-	a.log.Info.Printf("Received global state: %s\n", gs)
+func (a *App) MakeSnapshot(rq *interface{}, resp *utils.GlobalState) error {
+	*resp = a.snap.MakeSnapshot()
+	a.log.Info.Printf("Received global state: %s\n", resp)
 	return nil
 }
 

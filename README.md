@@ -26,10 +26,10 @@ supported by the GoVector package.
 - [X] Bloqueos al hacer snapshot, era por la sincronización de channels concurrentes no buferrizads
 - [X] Recibe msg nil
 - [X] Error al enviar un msg
-- [ ] Añadir prerecording msg
+- [X] Añadir prerecording msg
 
 - [ ] Pub key via ssh connection
-- [ ] Test en local y verificar funcionamiento
+- [X] Test en local y verificar funcionamiento
 - [ ] Pruebas en distribuidos
 - [ ] Memoria
 - [ ] Limpiar Código
