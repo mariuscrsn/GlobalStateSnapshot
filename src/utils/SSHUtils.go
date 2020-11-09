@@ -14,7 +14,8 @@ import (
 
 const (
 	SshPort        = "22"
-	PrivateKeyPath = "/home/cms/.ssh/id_rsa" // TODO: load like hostkey
+	PrivateKeyPath = "/home/cms/.ssh/id_rsa"
+	//PrivateKeyPath = "/home/a721609/.ssh/id_rsa"
 )
 
 func ConnectSSH(user string, host string) *ssh.Client {

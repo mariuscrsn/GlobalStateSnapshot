@@ -11,9 +11,6 @@ type NodeState struct {
 
 func (n NodeState) String() string {
 	var res string
-	//if n.Busy {
-	//	res += "IS BUSY!!!!!!!!!!!!\n"
-	//}
 	res += "Sent: [ "
 	for node, m := range n.SendMsg {
 		res += fmt.Sprintf(" %s-> %s,", m.Body, node)

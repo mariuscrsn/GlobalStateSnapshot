@@ -104,8 +104,6 @@ func (n *Node) receiver() *utils.Msg {
 		if err != nil {
 			n.Logger.Error.Panicf("Server accept connection error: %s", err)
 		}
-		//TODO: en estas 2 ramas se bloquea en alguna si los canales son síncronos, no buferrizados
-		//n.Logger.Info.Printf("Recv data: %s\n", recvData)
 		if !strings.Contains(string(recvData[0:nBytes]), "Channels") {
 			// Waiting for MSG or marks
 			var tempMsg utils.Msg
@@ -123,7 +121,6 @@ func (n *Node) receiver() *utils.Msg {
 				n.Logger.Info.Printf("MSG [%s] recv from: %s\n", tempMsg.Body, tempMsg.SrcName)
 			}
 		} else {
-			//if locState.RecvAllMarks { // Waiting for states of the rest of the nodes
 			var tempState = utils.AllState{}
 			n.Logger.GoVector.UnpackReceive("Receiving State", recvData[0:nBytes], &tempState, govec.GetDefaultLogOptions())
 			n.Logger.Info.Println("State recv from: ", tempState.Node.NodeName)
@@ -209,12 +206,6 @@ func (n *Node) sendGroup(data []byte, outMsg *utils.OutMsg) error {
 				}
 			}
 		} else { // sending msg
-			//n.Mutex.Lock()
-			//state := n.AllState
-			//n.Mutex.Unlock()
-			//if state.Node.Busy  {
-			//	return &ErrorNode{"Cannot send msg while global snapshot process is running"}
-			//}
 			for i, idxNode := range outMsg.IdxDest {
 				node := n.NetLayout.Nodes[idxNode]
 				if node.Name != n.MyNodeInfo.Name {

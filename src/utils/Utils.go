@@ -13,6 +13,8 @@ import (
 const OutputDirRel = "output/"
 const WorkDirPath = "/home/cms/Escritorio/uni/redes/practicas/pr1/"
 
+//const WorkDirPath = "/home/a721609/Desktop/redes/pr1/"
+
 type Logger struct {
 	// Logs
 	Trace    *log.Logger

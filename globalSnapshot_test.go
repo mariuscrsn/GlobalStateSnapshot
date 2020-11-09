@@ -51,10 +51,16 @@ func setupNodes() {
 		var cmd = "cd " + utils.WorkDirPath + ";/usr/local/go/bin/go run " + utils.WorkDirPath + "App.go " + strconv.Itoa(idx) + " " + strconv.Itoa(node.RPCPort)
 		go utils.RunCommandSSH(cmd, sshConn[node.Name])
 
-		time.Sleep(3000 * time.Millisecond) // Wait for RPC initialization
-
 		// Connect via RPC to the server
-		clientRPC, err := vrpc.RPCDial("tcp", node.IP+":"+strconv.Itoa(node.RPCPort), logger, govec.GetDefaultLogOptions())
+		var clientRPC *rpc.Client
+		var err error
+		for i := 0; i < netLayout.AttemptsSend; i++ {
+			time.Sleep(3 * time.Second) // Wait for RPC initialization
+			clientRPC, err = vrpc.RPCDial("tcp", node.IP+":"+strconv.Itoa(node.RPCPort), logger, govec.GetDefaultLogOptions())
+			if err == nil {
+				break
+			}
+		}
 		if err != nil {
 			panic(err)
 		}
@@ -73,9 +79,11 @@ func terminate() {
 
 /*
 func TestEmptySnapshot(t *testing.T) {
-	utils.RunRPCCommand("App.MakeSnapshot", RPCConn["P0"], nil)
+	chRespSnap := make(chan utils.GlobalState, 1)
+	utils.RunRPCSnapshot(RPCConn["P0"], chRespSnap)
+	gs := <-chRespSnap
+	fmt.Printf("Snapshot completed: %s\n", gs)
 }
-
 */
 
 /*
@@ -90,6 +98,7 @@ func TestSimple(t *testing.T) {
 	utils.RunRPCCommand("App.SendMsg", RPCConn["P0"], msg5, 5, chRespMsg)
 	fmt.Println("Test: ordered 5th msg")
 
+	time.Sleep(5*time.Second)
 	fmt.Println("Test: ordered last GS")
 	utils.RunRPCSnapshot( RPCConn["P1"], chRespSnap)
 	gs := <-chRespSnap
